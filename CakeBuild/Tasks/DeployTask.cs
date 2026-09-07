@@ -11,7 +11,7 @@ namespace CakeBuild.Tasks;
 
 
 [TaskName("Deploy")]
-[IsDependentOn(typeof(PackageTask))]
+[IsDependentOn(typeof(PackageModTask))]
 public sealed class DeployTask : FrostingTask<BuildContext>
 {
 	public override void Run(BuildContext context)
