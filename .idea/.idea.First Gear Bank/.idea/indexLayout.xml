@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="UserContentModel">
+    <attachedFolders />
+    <explicitIncludes />
+    <explicitExcludes>
+      <Path>.git</Path>
+      <Path>.idea</Path>
+      <Path>build.ps1</Path>
+      <Path>build.sh</Path>
+      <Path>First Gear Bank.sln</Path>
+    </explicitExcludes>
+  </component>
+</project>
