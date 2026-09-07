@@ -1,5 +1,5 @@
-using Cake.Frosting;
 using Cake.Common.IO;
+using Cake.Frosting;
 
 namespace CakeBuild.Tasks;
 
