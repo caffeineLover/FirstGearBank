@@ -24,6 +24,9 @@ public static class Program
 	}
 }
 
+
+
+// ReSharper disable once ClassNeverInstantiated.Global
 public class BuildContext : FrostingContext
 {
 	public const string ProjectName = "First_Gear_Bank";
