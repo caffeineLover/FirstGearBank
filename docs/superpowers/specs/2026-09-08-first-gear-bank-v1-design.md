@@ -43,7 +43,7 @@ The v1 playable products are deliberately narrow:
 - a fully liquid rusty-gear savings account;
 - a temporal-gear vault with stochastic gross interest and an offsetting storage charge;
 - fixed-term rusty-gear certificates of deposit (CDs); and
-- direct rusty-savings transfers between known players.
+- direct rusty-savings transfers to players successfully registered through observation in the current per-world recipient-registry epoch.
 
 Bankers also accept and dispense physical currency, show live statements, and print immutable paper statements. Banks may enter the world through player-built Charter branches or deterministic natural branches beside some vanilla trader sites.
 
@@ -555,17 +555,17 @@ Provide a permission-gated settlement-resolution command for a quarantined recor
 
 Transfers move rusty savings from one personal account to another. Temporal balances and CDs cannot be transferred in v1.
 
-The sender must be in a valid conversation with a Banker. The recipient may be offline and need never have used the Bank, but must be a player previously seen in the world. A successful incoming transfer lazily creates the recipient’s account.
+The sender must be in a valid conversation with a Banker. The recipient may be offline and need never have used the Bank, but First Gear Bank must have committed that player's observation in the current `RegistryEpochId` for this world. The normal initial epoch begins when the mod is installed. A successful incoming transfer lazily creates the recipient’s account.
 
 There is no fee, memo, recipient acceptance, cancellation, chargeback, or partial transfer. A confirmed transfer is immediate and final.
 
 ## 11.1 Name registry and recipient selection
 
-The server maintains a persisted registry from hidden PlayerUID to the latest authenticated canonical player name.
+The server maintains a persisted, per-world registry from hidden PlayerUID to the latest authenticated canonical player name. The registry is initialized empty with a new opaque `RegistryEpochId` when First Gear Bank state is first created for that world. This epoch remains fixed across ordinary upgrades, shutdowns, and temporary removal/reinstallation of the mod so long as its world data is retained.
 
-Before recipient resolution is enabled on first installation or migration, bootstrap this registry idempotently from authoritative **world-specific** saved-player membership, including offline players seen before First Gear Bank was installed; this does not create Bank accounts. Thereafter update the registry whenever a player authenticates in this world or the engine supplies a changed canonical name. Missing current metadata never deletes an already known identity.
+Observation occurs only when, while First Gear Bank is active for this world, the server reports an authenticated player joining or the mod enumerates players who are currently connected and authenticated during startup. Registering a player does not create a Bank account. A player who visited before the current epoch but has not joined during it is ineligible and absent from `KnownPlayerListing`; that player becomes eligible after a later authenticated join only when the registry is healthy and the observation commit succeeds. There is deliberately no historical backfill.
 
-Source inspection must verify a supported world-specific enumeration route. Vintage Story 1.22.7 `IPlayerDataManager.PlayerDataByUid` is documented as world-independent server data and is not sufficient proof that a player visited this save. If no supported world-specific route exists, implementation of the locked "previously seen in this world" rule is blocked pending an explicit product choice; do not silently substitute the server-wide superset or redefine it as "seen after this mod was installed."
+An observation becomes effective only when its insert or canonical-name update commits through the coordinator in an atomic zero-journal-record state revision. The persisted `RecipientRegistryRevision` increments on each effective insert or rename, and the touched entry's `MappingVersion` becomes that revision; observing an unchanged UID/name pair is an idempotent no-op. On rename, append the displaced canonical name to that UID's audit-only history in the same revision. The history survives restart and verified recovery, but its names never resolve or appear in `KnownPlayerListing`. Missing current metadata never deletes an already known identity. Never seed or repair this registry from `IPlayerDataManager.PlayerDataByUid`, another server-wide known-player collection, or data belonging to another world. If the registry cannot be loaded safely, apply the isolated recipient-registry quarantine in section 21.1 rather than broadening eligibility silently.
 
 - Resolution trims input and compares current canonical names case-insensitively.
 - Historical aliases never resolve and never appear in the selectable listing.
@@ -579,11 +579,11 @@ The default mode is exact name entry. Small servers may enable a searchable name
 "RecipientSelectionMode": "ExactName"
 ```
 
-`KnownPlayerListing` exposes only current canonical names. It must not disclose UIDs, balances, account existence, or online state.
+`KnownPlayerListing` omits ambiguous current names and never exposes UIDs, balances, account existence, or online state.
 
 ## 11.2 Confirmation and amount rules
 
-Use a two-step server-authoritative confirmation. Resolution returns an opaque short-lived token bound internally to the sender session, recipient UID, registry revision/name, and amount intent. The confirmation screen shows the resolved canonical name and either a fixed amount or the explicit `AllAtCommit` rule. A rename or ambiguous remap before commit invalidates the token and requires reconfirmation.
+Use a two-step server-authoritative confirmation. Resolution returns an opaque short-lived token bound internally to the sender session, `RegistryEpochId`, recipient UID, recipient `MappingVersion`, canonical name, and amount intent. At commit, the epoch, selected entry version, and canonical name must still match, and a fresh case-insensitive resolution of that name must return exactly the same UID. An unrelated player's insert or rename does not invalidate the token; a selected-recipient rename or newly introduced name collision does. The confirmation screen shows the resolved canonical name and either a fixed amount or the explicit `AllAtCommit` rule. An invalidated token requires fresh resolution and confirmation.
 
 A manually entered amount may use at most the configured rusty display precision, default three decimals. Excess decimals are rejected, not silently rounded. Transfer intent is either `ExactAmount` or `AllAtCommit`. For `AllAtCommit`, the token binds the mode rather than a numeric amount; confirmation says "entire balance; exact amount determined at commit" and may show the current balance only as an estimate. Inside the serialized commit, accrue both accounts to one timestamp and transfer the sender's exact six-decimal rusty balance, leaving it exactly zero. A recipient-cap or other failure rejects the whole transfer and never falls back to a partial amount.
 
@@ -895,7 +895,7 @@ The GUI should feel native to Vintage Story:
 
 Avoid a modern credit-card aesthetic, neon dashboard graphs, or decorative motion that delays input.
 
-Every irreversible operation has a confirmation step showing server-resolved values. Error messages distinguish insufficient funds, invalid denomination, full inventory, expired quote, unknown recipient, cooldown, and unavailable Banker without leaking internal IDs.
+Every irreversible operation has a confirmation step showing server-resolved values. Error messages distinguish insufficient funds, invalid denomination, full inventory, expired quote, unknown recipient, `RecipientServiceUnavailable`, cooldown, and unavailable Banker without leaking internal IDs.
 
 # 15. Banker’s Charter
 
@@ -1307,7 +1307,7 @@ The long-run/initial/constant continuous rate is always derived from `TargetAnnu
 
 # 19. Administrative Financial Corrections
 
-Provide a permission-gated command/API accepting current player name, currency, signed fixed-point amount, and mandatory reason. Resolve the player through the current-name registry used for transfers. The server authenticates the administrator; the request cannot choose admin identity.
+Provide a permission-gated command/API accepting current player name, currency, signed fixed-point amount, and mandatory reason. Resolve the player through the current-name registry used for transfers. The server authenticates the administrator; the request cannot choose admin identity. While that registry is quarantined, name-based corrections reject with `RecipientServiceUnavailable`; there is no UID-entry bypass.
 
 Before correction, accrue the target at the command timestamp. Reject zero, malformed, overflow/cap-breaking, or balance-negative results. Commit one double-entry `AdminCorrection` against a per-currency system correction account.
 
@@ -1353,7 +1353,7 @@ Persist through supported Vintage Story world-save mechanisms:
 - financial clock, month serial, rate history/current CIR state;
 - monthly shock and liquidity state/checkpoints;
 - independent deterministic RNG domains/versioning;
-- current-name registry and historical aliases;
+- recipient-registry epoch/revision, current-name entries and mapping versions, and displaced-name audit history;
 - notification outbox, sealed summary buckets, acknowledgments, and delivery watermarks;
 - active-scope high-water state, permanent exact committed-key indexes, and bounded cached response bodies;
 - active physical-settlement recovery records and permanent compact settlement tombstones;
@@ -1377,7 +1377,10 @@ Startup reconciliation:
 5. reconstructs accounts, aggregates, CDs, history, transfer directions, and notification intents while preserving authoritative acknowledgment/watermark state;
 6. replaces a bad cache with replay result and logs one diagnostic, never a synthetic money correction;
 7. restores clock/rate/liquidity/RNG state and processes due boundaries/maturities once; and
-8. reconciles physical settlements, branches, entities, names, notification outbox, and request indexes before enabling affected mutation or inventory access.
+8. reconciles physical settlements, branches, entities, notification outbox, and request indexes before enabling affected mutation or inventory access; and
+9. validates the persisted recipient registry, then merges only players currently connected and authenticated in this world before enabling name resolution.
+
+A fresh First Gear Bank state or a registered migration from a schema that predates the recipient registry creates a new epoch with an empty registry before applying the current-connection merge. In a schema version that requires the registry, a missing epoch, revision, entry version, or otherwise invalid registry is corruption, not permission to recreate or backfill it. Startup must never use saved-player or server-wide membership for name reconciliation. A player who joined and left while First Gear Bank was absent remains excluded; a player authenticated and still connected when the mod starts is observed by the current-connection merge.
 
 If the authoritative journal or indispensable financial-market state is corrupt or missing, preserve the raw bytes and enter read-only quarantine. Deny mutations and provide a privileged diagnostic/export path. Never silently reset money, delete CDs, reroll market history, or prefer a stale projection over a broken journal.
 
@@ -1404,10 +1407,19 @@ Persist realized financial states as authority. Deterministic derivation aids te
 | Invalid config | Clear log and documented safe default |
 | Arithmetic/time fault | Reject candidate state; preserve prior revision |
 | Bad projection cache | Rebuild from journal |
-| Corrupt authoritative state | Preserve and quarantine; never reset |
+| Corrupt authoritative financial/journal state | Preserve and quarantine; never reset |
 | Duplicate request | Return cached terminal result, or `AlreadyProcessedResponseExpired` after response pruning; never execute again |
 | Ambiguous cross-blob physical settlement after hard crash | Quarantine affected settlement/access; never guess or silently compensate |
 | Notification delivery failure | Preserve stable-ID outbox notice and retry; do not reverse money |
+| Recipient-registry corruption | Isolate name-resolution services; preserve the registry bytes; never backfill or widen eligibility |
+
+Recipient-registry quarantine disables exact-name transfer resolution, `KnownPlayerListing`, transfer confirmation/commit, and name-based administrative corrections. Outstanding recipient tokens reject with the distinct `RecipientServiceUnavailable` result. Authenticated-UID access to the player's own deposits, withdrawals, savings, vault, CDs, history, and statements remains available when the journal and those subsystems are healthy.
+
+While quarantined, join events cannot produce a successful registry commit and therefore do not make a player eligible; log a bounded diagnostic rather than building a second untrusted name list. Recovery may either restore a separately verified valid registry snapshot or use a permission-gated audited reset with a mandatory reason.
+
+A restored snapshot must authenticate as belonging to this exact world and contain a valid `RegistryEpochId`, registry revision, exactly one current-name entry per UID, each entry's mapping version, and displaced-name audit history. Duplicate canonical names across UIDs are valid and resolve ambiguously. Install it atomically in a zero-journal-record state revision, invalidate all outstanding recipient tokens even if the epoch matches, merge only currently connected authenticated players, and clear quarantine only after validation and persistence. Never supplement it from historical or server-wide membership.
+
+Reset preserves the corrupt bytes for export, creates a new `RegistryEpochId`, zeroes the registry and its revision, invalidates every outstanding recipient token, and commits as a zero-journal-record state revision. It then observes only players currently connected and authenticated. Anyone else must join again. There is no server-wide or historical recovery backfill. Eligibility always means a successful observation commit in the current epoch; after reset, an observation retained only under the old epoch no longer qualifies.
 
 ## 21.2 Privacy and trust boundaries
 
@@ -1463,7 +1475,7 @@ Before implementation selects concrete types, inspect and document the 1.22.7 re
 - calendar/time-speed and sleep behavior;
 - world-data persistence lifecycle;
 - player-inventory serialization order and a provably co-serialized private settlement-recovery capsule;
-- supported world-specific enumeration of previously seen players, explicitly distinguishing world-independent `IPlayerDataManager` data;
+- authenticated player-join and currently-connected-player hooks needed for the current-epoch, per-world recipient registry, explicitly excluding world-independent `IPlayerDataManager` data;
 - item fuel/ignition properties and barrel recipes;
 - readable document patterns;
 - non-consumed crafting ingredients;
@@ -1525,7 +1537,9 @@ Do not reuse names from older 1.21 or early 1.22 builds without verification.
 
 ## 23.5 Transfers, identity, and notices
 
-- Existing-world saved-player bootstrap (including offline pre-install players), exact-name/listing modes, case-insensitive current names, aliases not resolving, unknown/ambiguous names, rename race, and no UID exposure.
+- Empty-registry first install/migration; atomic idempotent join/rename registration; persisted epoch/revisions; eligibility only after successful observation commit in the current epoch; authenticated-current-connection startup merge; exclusion of prior-epoch-only and other-world players; eligibility after a prior-epoch visitor rejoins; persistence across restart/upgrade/reinstallation with retained world data; exact-name/listing modes; case-insensitive current names; aliases not resolving; unknown/ambiguous rejection; ambiguous-list omission; rename race; and no UID exposure.
+- Unrelated registry updates leave a confirmation valid; selected-recipient rename or a new same-name collision invalidates it.
+- Missing/corrupt required registry isolates name services with `RecipientServiceUnavailable`; authenticated same-world snapshot restoration is atomic and invalidates tokens; audited reset creates a new epoch; neither recovery path backfills, and players joining only during quarantine must rejoin after recovery unless still connected for the recovery merge. Restart/restore retains displaced-name audit history without resolving or listing aliases; a valid restored same-name collision remains ambiguous.
 - Offline/no-account recipient creation; self, zero, negative, overprecision, insufficient, cap, and concurrent opposite transfers.
 - Manual precision for config values 0–6 and `AllAtCommit` recomputation that drains the exact six-decimal post-accrual balance.
 - Same timestamp accrual and total-liability conservation.
@@ -1586,7 +1600,7 @@ This is sequencing guidance, not authorization to begin coding before the implem
 7. Implement rusty/temporal lazy accrual and cap behavior.
 8. Implement denomination registry, phased physical settlement, reconciliation, and crash-boundary quarantine.
 9. Implement CDs, quotes, maturity queue, spreads, and liquidity.
-10. Implement saved-player name bootstrap, transfers, cooldown, durable notification outbox, and acknowledgment.
+10. Implement the per-world recipient registry and epochs, transfers, cooldown, durable notification outbox, and acknowledgment.
 11. Implement networking DTOs and Banker session validation.
 12. Implement Banker entity/dialogue and banking GUIs.
 13. Implement live/printed statements, scraps, burning, and compost.
@@ -1608,7 +1622,7 @@ v1 is complete only when a player can:
 7. observe a stochastic temporal vault with separate gross interest and storage entries;
 8. withdraw representable amounts atomically while retaining fractional remainder;
 9. buy locked rusty CDs from a 30-second server quote using the default 1/3/6/12-month choices and receive stored maturity proceeds automatically;
-10. transfer rusty savings to any previously seen player using current names, including an offline recipient;
+10. transfer rusty savings, using current names, to any offline or online player whose observation First Gear Bank has committed in this world's current recipient-registry epoch;
 11. view full live history and print one immutable statement per conversation for one paper;
 12. convert statements to scraps, burn either item in five real seconds at 600°C, and compost 16 scraps in 480 game hours;
 13. kill a Banker without financial loss and receive a replacement after the configured delay (default 3–7 in-game days) at an active branch;
@@ -1645,7 +1659,8 @@ Temporal vault: gross RFR less theta storage charge; stochastic mean-zero log ta
 CDs: rusty only; default 1/3/6/12 months and 0.25 minimum; configurable; no early redemption
 Quote: 30 real seconds; maturity value stored at issue
 
-Transfers: rusty savings only; current names; known players; offline allowed
+Transfers: rusty savings only; current names; successful observation in current epoch
+Registry: per-world epoch; starts at install; offline allowed; no historical/server-wide backfill
 Recipient mode default: ExactName; optional KnownPlayerListing
 Cooldown: 1 real second, configurable; Transfer All uses exact AllAtCommit balance
 Notices: durable stable-ID outbox; at-least-once delivery with dedup/ack
