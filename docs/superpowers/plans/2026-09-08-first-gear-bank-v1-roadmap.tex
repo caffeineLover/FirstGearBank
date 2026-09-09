@@ -1,0 +1,360 @@
+% Options for packages loaded elsewhere
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+\PassOptionsToPackage{dvipsnames,svgnames,x11names}{xcolor}
+\documentclass[
+  9pt,
+  letterpaper,
+]{extarticle}
+\usepackage{xcolor}
+\usepackage[margin=0.55in]{geometry}
+\usepackage{amsmath,amssymb}
+\setcounter{secnumdepth}{-\maxdimen} % remove section numbering
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provide euro and other symbols
+\else % if luatex or xetex
+  \usepackage{unicode-math} % this also loads fontspec
+  \defaultfontfeatures{Scale=MatchLowercase}
+  \defaultfontfeatures[\rmfamily]{Ligatures=TeX,Scale=1}
+\fi
+\usepackage{lmodern}
+\ifPDFTeX\else
+  % xetex/luatex font selection
+\fi
+% Use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{microtype.sty}{% use microtype if available
+  \usepackage[]{microtype}
+  \UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\makeatletter
+\@ifundefined{KOMAClassName}{% if non-KOMA class
+  \IfFileExists{parskip.sty}{%
+    \usepackage{parskip}
+  }{% else
+    \setlength{\parindent}{0pt}
+    \setlength{\parskip}{6pt plus 2pt minus 1pt}}
+}{% if KOMA class
+  \KOMAoptions{parskip=half}}
+\makeatother
+\usepackage{listings}
+\newcommand{\passthrough}[1]{#1}
+\lstset{defaultdialect=[5.3]Lua}
+\lstset{defaultdialect=[x86masm]Assembler}
+\usepackage{longtable,booktabs,array}
+\usepackage{caption}
+\captionsetup[table]{skip=6pt}
+\newcounter{none} % for unnumbered tables
+\usepackage{calc} % for calculating minipage widths
+% Correct order of tables after \paragraph or \subparagraph
+\usepackage{etoolbox}
+\makeatletter
+\patchcmd\longtable{\par}{\if@noskipsec\mbox{}\fi\par}{}{}
+\makeatother
+% Allow footnotes in longtable head/foot
+\IfFileExists{footnotehyper.sty}{\usepackage{footnotehyper}}{\usepackage{footnote}}
+\makesavenoteenv{longtable}
+\setlength{\emergencystretch}{3em} % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\setlength{\emergencystretch}{3em}
+\AtBeginDocument{%
+  \lstset{%
+    basicstyle=\ttfamily\footnotesize,%
+    breaklines=true,%
+    breakatwhitespace=false,%
+    columns=fullflexible,%
+    keepspaces=true,%
+    showstringspaces=false%
+  }%
+}
+\usepackage{bookmark}
+\IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
+\urlstyle{same}
+% fallback for those not using the hyperref driver hyperxmp:
+\makeatletter
+\@ifundefined{xmpquote}{\newcommand{\xmpquote}[1]{#1}}{}
+\makeatother
+\hypersetup{
+  colorlinks=true,
+  linkcolor={blue},
+  filecolor={Maroon},
+  citecolor={Blue},
+  urlcolor={blue},
+  pdfcreator={LaTeX via pandoc}}
+
+\author{}
+\date{}
+
+\begin{document}
+
+\section{First Gear Bank v1 Delivery
+Roadmap}\label{first-gear-bank-v1-delivery-roadmap}
+
+This roadmap divides the locked v1 specification into independently
+reviewable implementation plans. The split is deliberate: the financial
+core, physical inventory settlement, network/UI layer, and
+branch/world-generation systems have different failure modes and can
+each be accepted without holding the entire program in one working
+context.
+
+The authoritative behavior remains
+\texttt{docs/}\allowbreak{}\texttt{superpowers/}\allowbreak{}\texttt{specs/}\allowbreak{}\texttt{2026-}\allowbreak{}\texttt{09-}\allowbreak{}\texttt{08-}\allowbreak{}\texttt{first-}\allowbreak{}\texttt{gear-}\allowbreak{}\texttt{bank-}\allowbreak{}\texttt{v1-}\allowbreak{}\texttt{design.}\allowbreak{}\texttt{md}.
+A phase plan may choose concrete class names and file boundaries, but it
+may not weaken or rebalance that specification.
+
+\subsection{Delivery Order}\label{delivery-order}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.0600}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.2900}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.2000}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.4500}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+Phase
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Executable plan
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Primary specification coverage
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Exit gate
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+1 &
+\texttt{2026-}\allowbreak{}\texttt{09-}\allowbreak{}\texttt{08-}\allowbreak{}\texttt{first-}\allowbreak{}\texttt{gear-}\allowbreak{}\texttt{bank-}\allowbreak{}\texttt{v1-}\allowbreak{}\texttt{foundation.}\allowbreak{}\texttt{md}
+& Foundational portions of sections 1-6, 18, 20.2-20.3, 21, 22, and the
+relevant section 23 tests & A pure .NET core, safe package pipeline,
+immutable ledger/coordinator, sectioned persistence, and
+settlement-recovery feasibility spike all pass review. \\
+2 &
+\texttt{2026-}\allowbreak{}\texttt{09-}\allowbreak{}\texttt{08-}\allowbreak{}\texttt{first-}\allowbreak{}\texttt{gear-}\allowbreak{}\texttt{bank-}\allowbreak{}\texttt{v1-}\allowbreak{}\texttt{financial-}\allowbreak{}\texttt{core.}\allowbreak{}\texttt{md}
+& Sections 7-9 & Both clocks, Constant/CIR rates, RNG domains, shocks,
+and rusty/temporal accrual pass deterministic and statistical tests. \\
+3 &
+\texttt{2026-}\allowbreak{}\texttt{09-}\allowbreak{}\texttt{08-}\allowbreak{}\texttt{first-}\allowbreak{}\texttt{gear-}\allowbreak{}\texttt{bank-}\allowbreak{}\texttt{v1-}\allowbreak{}\texttt{physical-}\allowbreak{}\texttt{settlement.}\allowbreak{}\texttt{md}
+& Section 10 and settlement portions of sections 20-21 & Denominations
+and inventory operations are atomic during live execution, and every
+hard-crash state is either proved safe or quarantined. \\
+4 &
+\texttt{2026-}\allowbreak{}\texttt{09-}\allowbreak{}\texttt{08-}\allowbreak{}\texttt{first-}\allowbreak{}\texttt{gear-}\allowbreak{}\texttt{bank-}\allowbreak{}\texttt{v1-}\allowbreak{}\texttt{certificates-}\allowbreak{}\texttt{liquidity.}\allowbreak{}\texttt{md}
+& Section 12 & CD quotes, contracts, maturity, the exact
+accrued-liability index, and liquidity adjustments pass deterministic
+tests using genuinely funded accounts. \\
+5 &
+\texttt{2026-}\allowbreak{}\texttt{09-}\allowbreak{}\texttt{08-}\allowbreak{}\texttt{first-}\allowbreak{}\texttt{gear-}\allowbreak{}\texttt{bank-}\allowbreak{}\texttt{v1-}\allowbreak{}\texttt{identity-}\allowbreak{}\texttt{transfers.}\allowbreak{}\texttt{md}
+& Sections 5, 11, and 19 & The current-epoch per-world registry,
+transfers, durable notices, and administrative corrections pass the
+complete identity matrix. \\
+6 &
+\texttt{2026-}\allowbreak{}\texttt{09-}\allowbreak{}\texttt{08-}\allowbreak{}\texttt{first-}\allowbreak{}\texttt{gear-}\allowbreak{}\texttt{bank-}\allowbreak{}\texttt{v1-}\allowbreak{}\texttt{protocol-}\allowbreak{}\texttt{statements.}\allowbreak{}\texttt{md}
+& Sections 13 and 20.1 & Authenticated sessions, bounded DTOs,
+pagination, live/printed statements, scraps, fuel, and compost pass
+protocol and engine tests. \\
+7 &
+\texttt{2026-}\allowbreak{}\texttt{09-}\allowbreak{}\texttt{08-}\allowbreak{}\texttt{first-}\allowbreak{}\texttt{gear-}\allowbreak{}\texttt{bank-}\allowbreak{}\texttt{v1-}\allowbreak{}\texttt{charter-}\allowbreak{}\texttt{banker-}\allowbreak{}\texttt{gui.}\allowbreak{}\texttt{md}
+& Sections 14-15 and 17 & Charter protection/lifecycle, Banker entity
+and replacement, and isolated player GUIs pass engine and multiplayer
+tests without Harmony. \\
+8 &
+\texttt{2026-}\allowbreak{}\texttt{09-}\allowbreak{}\texttt{08-}\allowbreak{}\texttt{first-}\allowbreak{}\texttt{gear-}\allowbreak{}\texttt{bank-}\allowbreak{}\texttt{v1-}\allowbreak{}\texttt{natural-}\allowbreak{}\texttt{branches-}\allowbreak{}\texttt{release.}\allowbreak{}\texttt{md}
+& Sections 16 and 22-26 & Natural generation/backfill, optional
+integrations, diagnostics, load tests, all acceptance scenarios, release
+packaging, and rendered QA pass. \\
+\end{longtable}
+}
+
+Only the first plan is authored now. Each later executable plan is
+written after its prerequisites are real and reviewed, so it can cite
+the actual interfaces, schema version, API-spike evidence, and test
+fixtures produced upstream.
+
+\subsection{Dependency Graph}\label{dependency-graph}
+
+\begin{lstlisting}
+Phase 1: evidence, contracts, journal, coordinator, sectioned persistence
+   `-- Phase 2: financial clocks, rates, shocks, and cash accrual
+          `-- Phase 3: denominations and physical settlement
+                 |-- Phase 4: CDs and exact liquidity
+                 |      `-- Phase 5: identity, transfers, notices, corrections
+                 |             `-- Phase 6: protocol and statements
+                 |                    `-- Phase 7: Charter, Banker, and GUI
+                 |                           `-- Phase 8: natural branches and release
+                 `-- branch API evidence ---------------------^
+\end{lstlisting}
+
+Phase 3 deliberately precedes CDs and transfers so those systems can be
+tested with accounts funded through the real deposit path rather than
+privileged test seeding. Protocol types are separated from the GUI; the
+GUI joins the Banker and Charter phase because its valid session depends
+on a live assigned Banker and branch.
+
+\subsection{Contracts Frozen in Phase
+1}\label{contracts-frozen-in-phase-1}
+
+Phase 1 owns the cross-cutting decisions that every later plan must
+reuse:
+
+\begin{itemize}
+\tightlist
+\item
+  signed six-decimal \passthrough{\lstinline!BankUnits!}, ties-to-even
+  conversion, and the \passthrough{\lstinline!int.MaxValue!}-gear
+  customer cap;
+\item
+  \passthrough{\lstinline!Currency!}, hidden player keys,
+  operation/\allowbreak{}command/\allowbreak{}request identifiers, and
+  normalized financial instants;
+\item
+  immutable, append-only, independently balanced journal records;
+\item
+  one serialized server-side coordinator and all-or-nothing revision
+  publication;
+\item
+  request-scope sequencing, digest matching, bounded response caching,
+  and permanent request/automatic-operation barriers;
+\item
+  deterministic projection replay and the rule that caches never outrank
+  the journal;
+\item
+  explicit verified/unavailable domain slots, gated mutation reads, and
+  audited quarantine transitions without fabricated empty authority;
+\item
+  framed, independently checksummed, versioned persistence sections with
+  a migration registry, opaque quarantined-section pass-through, and
+  whole-envelope blocking for unknown container-v1 kinds;
+\item
+  an authenticated, bounded physical-settlement recovery plan containing
+  the complete predeclared Bank drafts, original request facts, and
+  exact inventory slot deltas---not merely a non-reconstructive digest;
+  and
+\item
+  engine-neutral ports for time, world blobs, logging, inventory
+  settlement, sessions, topology, and branch operations.
+\end{itemize}
+
+The foundation freezes envelope framing, section identity, journal
+representation, key formats, and quarantine rules. It does not falsely
+declare every later section complete. Every additive phase advances its
+independently versioned section through a deterministic migration, and
+the release gate exercises migration from every committed development
+schema.
+
+The envelope uses per-section checksums so registry corruption can
+isolate name services without taking healthy finance offline, and branch
+corruption cannot invalidate the journal. Corruption in the journal or
+indispensable market state still places finance in read-only quarantine
+as the specification requires.
+
+Vintage Story\textquotesingle s \passthrough{\lstinline!GameWorldSave!}
+hook is a pre-write staging event, not a durable-save acknowledgment.
+The live host therefore restages the current immutable snapshot on every
+event and never logs a disk-durability claim the API cannot make.
+
+\subsection{Locked Implementation
+Interpretations}\label{locked-implementation-interpretations}
+
+These interpretations follow the v03 text and prevent later plans from
+choosing incompatible persistence shapes:
+
+\begin{itemize}
+\tightlist
+\item
+  \passthrough{\lstinline!FinancialInstant!} is normalized as completed
+  financial months plus a decimal fraction in
+  \passthrough{\lstinline![0, 1)!}. Whole-month CD tenors therefore add
+  exactly and do not depend on binary floating-point equality.
+\item
+  A positive administrative correction does not open a nonexistent
+  account. Section 5 says only a successful physical deposit or received
+  transfer creates the banking relationship.
+\item
+  An initially individual, unacknowledged notice retains its stable
+  notice identity if the recipient disconnects. It is retried as that
+  individual notice and is not silently merged into a later offline
+  aggregate.
+\item
+  Ordinary configuration loading never rewrites a valid JSONC file.
+  First creation and an explicit First Gear Bank-owned save emit the
+  canonical commented form; a third-party manager\textquotesingle s
+  valid comment-free output remains untouched.
+\item
+  A player recovery capsule is accepted only when its world binding,
+  player binding, settlement identifier, direction, manifest,
+  before/after fingerprints, complete predeclared journal inputs,
+  original request digest/\allowbreak{}command/\allowbreak{}timestamp,
+  exact inventory slot deltas, operation identifiers, and authentication
+  tag verify. Missing, digest-only, or unverifiable evidence means
+  quarantine, never an inferred debit, credit, item removal, or item
+  grant.
+\item
+  Optional integrations do not gate native operation. Better Loot,
+  Better Loot Plus, Config Lib, and Integrated Mod Manager adapters
+  remain disabled with one bounded warning until their exact installed
+  identifiers and public APIs are verified.
+\end{itemize}
+
+\subsection{Evidence Gates}\label{evidence-gates}
+
+The local 1.22.7 reference has already verified the core lifecycle,
+save-blob API, authenticated server-player events, typed networking,
+entity/\allowbreak{}block/\allowbreak{}item registration, custom GUI
+primitives, commands/permissions, vanilla currency codes, and reusable
+crafting ingredients via \passthrough{\lstinline!consume: false!}.
+
+The following engine-facing work remains gated by focused spikes:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  Prove the strongest recovery evidence available across a world-save
+  blob and player-inventory serialization. The public API exposes
+  neither a cross-blob transaction nor an ordering guarantee.
+\item
+  Prove public interception for every Charter-protected player
+  modification, including chiseling, rotation/wrench use, furnishing
+  pickup, and multiblock effects. No Harmony fallback is preapproved.
+\item
+  Choose between API-only \passthrough{\lstinline!EntityHumanoid!} and
+  \passthrough{\lstinline!VSSurvivalMod!}\textquotesingle s
+  \passthrough{\lstinline!EntityDressedHumanoid!}, then prove rendering,
+  navigation, interaction, death, and unload behavior without inheriting
+  an ordinary trader inventory.
+\item
+  Prove stable vanilla generated-trader identity, visit/load hooks, and
+  crash-safe structure placement before natural branches are coded.
+\item
+  Verify exact Better Loot, Better Loot Plus, Config Lib, and Integrated
+  Mod Manager identifiers/APIs from installed or authoritative artifacts
+  before an adapter is enabled.
+\item
+  Prove an exact accrued-rusty-liability index whose checkpoint cost
+  does not depend on all accounts. In general,
+  \texttt{sum(}\allowbreak{}\texttt{round(}\allowbreak{}\texttt{f\ }\allowbreak{}\texttt{*\ }\allowbreak{}\texttt{balance\_}\allowbreak{}\texttt{i)}\allowbreak{}\texttt{)}\allowbreak{}
+  cannot be recovered from \passthrough{\lstinline!sum(balance\_i)!}
+  alone, so a scalar aggregate is insufficient. The CD/liquidity plan
+  cannot freeze its projection schema until this proof and its
+  adversarial tests pass.
+\end{enumerate}
+
+If a required public hook fails, implementation stops at that boundary
+and returns the evidence to the user. It does not silently narrow the
+behavior or add Harmony.
+
+\subsection{Program Completion}\label{program-completion}
+
+The mod is complete only after Phase 8 traces all 26 specification
+sections and all 15 acceptance criteria to passing automated or
+documented in-world tests. A successful
+\passthrough{\lstinline!dotnet build!} alone is never treated as
+gameplay acceptance.
+
+\end{document}
