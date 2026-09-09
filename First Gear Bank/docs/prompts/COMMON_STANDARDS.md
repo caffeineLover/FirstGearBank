@@ -10,42 +10,26 @@
 ---
 
 ## Understand Before Implementing
-- Before adding features or changing behavior:
+Before adding features or changing behavior:
 
 1. Inspect relevant code, documentation, configuration, and recent history.  Ask about material gaps or ambiguities;
     do not invent requirements.
-
 2. Explain what will change, how it will work, and why.  For nontrivial work, compare alternatives and justify your recommendation.
-
 3. Wait for the user's explicit design approval.
-
 4. Create a separate implementation plan covering components, ordered steps, risks, and validation. Only then code.
 
 - Scale detail to the task.
 - If discoveries invalidate approved assumptions or materially change the design, pause, explain, and obtain approval
    for the revision before continuing.
 
-
-
-
 ---
 
-# 3. Systematic Debugging
+## Systematic Debugging
+- Investigate the root cause rather than patching symptoms.
+- Test one hypothesis at a time; undo your unsuccessful experimental changes rather than stacking speculative fixes.
+- Verify the fix and check for regressions.  Add a regression test when practical and won't use too many tokens.
+- Report anything you could not reproduce or verify.
 
-Prefer systematic investigation over guessing.  For bugs, failed tests, and unexpected behavior, identify the root cause
-instead of repeatedly changing code until the symptom disappears.
-
-1. Reproduce the failure reliably.  If it is intermittent, gather more evidence rather than guessing.
-2. Examine errors, logs, inputs, outputs, recent changes, and relevant state.
-3. Trace the failure backward until its root cause is understood.
-4. State a specific hypothesis that explains the evidence.
-5. Test one hypothesis at a time using the smallest possible change.
-6. Fix the root cause and add a regression test when practical.
-7. Verify the original failure is resolved and existing behavior still works.
-8. Add appropriate validation, diagnostics, and defense-in-depth checks to prevent recurrence.
-
-If a hypothesis fails, remove or revert its experimental change, return to the evidence, and form a new hypothesis.  Do not
-stack speculative changes or treat disappearance of the symptom as proof of a fix.
 
 ---
 

@@ -1,13 +1,13 @@
 {
     "type": "code",
-    "modid": "first gear bank",
-    "name": "First_Gear_Bank",
+    "modid": "firstgearbank",
+    "name": "First Gear Bank",
     "authors": [
         "Unknown"
     ],
-    "description": "To be added",
+    "description": "Server-authoritative savings, temporal vaults, transfers, and certificates of deposit.",
     "version": "1.0.0",
     "dependencies": {
-        "game": ""
+        "game": "1.22.7"
     }
 }

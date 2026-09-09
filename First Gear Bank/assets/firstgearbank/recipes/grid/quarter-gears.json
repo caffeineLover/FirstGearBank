@@ -1,0 +1,7 @@
+{
+  "ingredientPattern": "QQ,QQ",
+  "width": 2,
+  "height": 2,
+  "ingredients": { "Q": { "type": "item", "code": "firstgearbank:gear-quarter" } },
+  "output": { "type": "item", "code": "game:gear-rusty", "quantity": 1 }
+}

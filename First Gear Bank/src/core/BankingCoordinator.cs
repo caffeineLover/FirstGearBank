@@ -31,7 +31,7 @@ namespace FirstGearBank.Core;
 /// Public snapshots contain internal identities, while dedicated view methods produce player-safe responses.
 public sealed partial class BankingCoordinator
 {
-    private readonly object gate = new();
+    private readonly System.Threading.Lock gate = new();
     private readonly IBankingHost host;
     private readonly IExactLiquidityIndex liquidityIndex;
     private BankState state;
@@ -306,7 +306,7 @@ public sealed partial class BankingCoordinator
         if (command.Kind == CommandKind.BuyCd)
             return Purchase(candidate, context.Request, command.Token, sample, commandId);
         if (command.Units <= 0) throw new BankException(BankError.InvalidAmount);
-        // Internal fractions remain valid cash; only a physical item movement must match a dispenseable quantum.
+        // Internal fractions remain valid cash; only a physical item movement must match a dispensable quantum.
         var quantum = command.Currency == Currency.Rusty ? Money.Scale / 4 : Money.Scale;
         if (command.Units % quantum != 0) throw new BankException(BankError.InvalidDenomination);
         var withdrawal = command.Kind == CommandKind.Withdraw;

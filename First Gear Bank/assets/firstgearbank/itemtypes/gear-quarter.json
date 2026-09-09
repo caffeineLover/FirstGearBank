@@ -1,0 +1,6 @@
+{
+  "code": "gear-quarter",
+  "maxstacksize": 64,
+  "shape": { "base": "game:item/gear-rusty" },
+  "creativeinventory": { "general": ["*"], "items": ["*"] }
+}
