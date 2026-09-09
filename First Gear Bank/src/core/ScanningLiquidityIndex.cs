@@ -1,5 +1,5 @@
 /*
- * Provides the explicit scan-based implementation of the CD liquidity projection contract.
+ * Provides the approved exact checkpoint scanner for the CD liquidity projection contract.
  * At each requested checkpoint it projects every cash account's rusty balance using its own stored checkpoint and
  * monthly rounding, then adds the original principal and remaining-tenor funding contribution of every active CD.
  * Temporal cash is excluded.  The supplied immutable bank state is never materialized or changed by this calculation.
@@ -9,14 +9,15 @@
  * with account count, pending account-month intervals, and retained certificate count.  It provides no sublinear index.
  *
  * BankingCoordinator requires an IExactLiquidityIndex dependency and does not select this implementation implicitly.
- * A host must explicitly accept the specification's performance exception before choosing it.  FinanceEngine uses
- * the dependency at funding checkpoints, not during a mere quote; due maturities must be processed chronologically.
+ * The server selects this implementation by default under the user's approved performance exception.  FinanceEngine
+ * invokes it only at month boundaries and funding-changing checkpoints, then retains the resulting liquidity target.
+ * Mere quotes read that cached target without scanning; due maturities must still be processed chronologically.
  */
 
 namespace FirstGearBank.Core;
 
 /// Stateless, exact account-by-account liquidity projection with explicit linear scan cost.
-/// It is a selectable fallback behind IExactLiquidityIndex, not a claimed solution to the spec's no-account-scan gate.
+/// The server's default IExactLiquidityIndex accepts checkpoint scan cost without changing monetary precision or rules.
 /// All values are calculated from the supplied immutable candidate rather than from mutable global cached totals.
 public sealed class ScanningLiquidityIndex : IExactLiquidityIndex
 {

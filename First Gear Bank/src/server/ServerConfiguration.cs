@@ -22,8 +22,7 @@ namespace FirstGearBank.Server;
 /// Branch intervals use ordinary world days, independent of the selected banking interest clock.
 internal sealed record ServerSettings(EconomicSettings Economics, CoreOptions Core, InterestTimeBasis TimeBasis,
     string RecipientMode, double CharterMinimumDays, double CharterMaximumDays, double ReplacementMinimumDays,
-    double ReplacementMaximumDays, int MinimumBranchSpacing, double NaturalBranchProbability, bool BackfillTraders,
-    bool AllowExactLiquidityScans = false);
+    double ReplacementMaximumDays, int MinimumBranchSpacing, double NaturalBranchProbability, bool BackfillTraders);
 
 /// JSONC reader with field-specific diagnostics and last-known-good handling for dependent economic settings.
 /// Loading never edits an existing configuration, including an invalid or legacy file.
@@ -64,10 +63,7 @@ internal sealed class ServerConfiguration
           "BankerReplacement": { "MinimumDays": 3, "MaximumDays": 7 },
           "MinimumCharterBranchSpacingBlocks": 32,
           "NaturalBranches": { "TraderCompanionProbability": 0.15, "BackfillExistingTraderLocations": false },
-          "Statements": { "RecentTransactionsOnPrintedStatement": 10 },
-          // Explicit performance exception: the exact fallback scans accounts at funding checkpoints.
-          // Banking remains unavailable without this opt-in or a supplied no-scan index.  Requires restart.
-          "AllowExactLiquidityScans": false
+          "Statements": { "RecentTransactionsOnPrintedStatement": 10 }
         }
         """;
 
@@ -158,6 +154,9 @@ internal sealed class ServerConfiguration
         }
         if (Find("StochasticCDSpread.RefreshMonths").ValueKind != JsonValueKind.Undefined)
             log.Write("WARN", "configuration", "StochasticCDSpread.RefreshMonths is obsolete and ignored.");
+        // Retain old JSONC bytes and comments, but retire the approval gate now that checkpoint scans are approved.
+        if (Find("AllowExactLiquidityScans").ValueKind != JsonValueKind.Undefined)
+            log.Write("WARN", "configuration", "AllowExactLiquidityScans is obsolete and ignored; liquidity selection is automatic.");
         return new(economics, new((int)Number("Currency.RustyGearDisplayPrecision", 3, 0, 6, true),
                 (decimal)Number("TransferCooldownSeconds", 1, 0, 86_400),
                 (int)Number("Statements.RecentTransactionsOnPrintedStatement", 10, 0, 100, true)),
@@ -165,7 +164,7 @@ internal sealed class ServerConfiguration
             Choice("RecipientSelectionMode", "ExactName", "KnownPlayerListing"), charterMin, charterMax,
             replacementMin, replacementMax, (int)Number("MinimumCharterBranchSpacingBlocks", 32, 0, int.MaxValue, true),
             Number("NaturalBranches.TraderCompanionProbability", .15, 0, 1),
-            Boolean("NaturalBranches.BackfillExistingTraderLocations"), Boolean("AllowExactLiquidityScans"));
+            Boolean("NaturalBranches.BackfillExistingTraderLocations"));
     }
 
 

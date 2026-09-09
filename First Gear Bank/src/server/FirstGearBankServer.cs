@@ -1,6 +1,6 @@
 /*
  * Hosts one world's banking coordinator behind Vintage Story's authoritative server lifecycle.
- * Startup loads validated JSONC, selects only an explicitly authorized exact liquidity implementation, restores guarded
+ * Startup loads validated JSONC, selects the approved exact checkpoint scanner unless an index is supplied, restores
  * world authority, and observes authenticated connected players.  World-save hooks restage immutable bank snapshots;
  * Disconnect, suspension, resume, and disposal retire transient access without transferring customer money.
  *
@@ -10,14 +10,17 @@
  *
  * Banker content registers validated loaded entities through RegisterBanker.  This adapter does not manufacture branch
  * topology, spawn NPCs, provide a client GUI, or guess hard-crash repairs.  Those integration boundaries
- * remain explicit.  An absent exact liquidity index disables banking rather than silently enabling a forbidden scan.
+ * remain explicit.  Checkpoint scans preserve per-account rounding at an accepted account-count-dependent cost;
+ * ordinary ticks and quotes reuse the core's held liquidity target unless financial events have become due.
  */
 
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using FirstGearBank.Core;
 using Vintagestory.API.Common;
@@ -36,7 +39,7 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
     private readonly VintageStoryClock clock;
     private readonly BankerSessions sessions;
     private readonly BankingProtocol protocol;
-    private readonly IExactLiquidityIndex? suppliedIndex;
+    private readonly IExactLiquidityIndex liquidityIndex;
     private readonly object inventoryGate = new();
     private readonly Dictionary<Guid, string> administrativeScopes = new();
     private readonly HashSet<string> reconciledPlayers = new(StringComparer.Ordinal);
@@ -56,18 +59,18 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
 
 
     //// Creates one server adapter and registers lifecycle callbacks before the save becomes available.
-    //// A supplied index must satisfy the core's exact-liability contract; otherwise configuration must opt into scans.
+    //// A supplied index must satisfy the exact-liability contract; otherwise use the approved checkpoint scanner.
     ////
     public FirstGearBankServer(ICoreServerAPI api, IExactLiquidityIndex? liquidityIndex = null)
     {
         this.api = api;
-        suppliedIndex = liquidityIndex;
+        this.liquidityIndex = liquidityIndex ?? new ScanningLiquidityIndex();
         log = new(api);
         configuration = new(api.DataBasePath, log);
         settings = configuration.Load();
         clock = new(api);
-        sessions = new(api);
         protocol = new(api, HandleRequest, log);
+        sessions = new(api, ConversationClosed);
         api.Event.ServerRunPhase(EnumServerRunPhase.RunGame, LoadWorld);
         api.Event.GameWorldSave += SaveWorld;
         api.Event.PlayerNowPlaying += ObservePlayer;
@@ -83,9 +86,24 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
 
 
 
+    //// Informs an affected client when session pruning, branch cutoff, or replacement closes its conversation.
+    //// This is display invalidation only; it cannot cancel an already committed financial operation.
+    ////
+    private void ConversationClosed(IServerPlayer player, Guid scope)
+    {
+        try { protocol.Send(player, new(scope, 0, "ConversationClosed")); }
+        catch (Exception)
+        {
+            // A disappearing connection must not disable unrelated customers after its authority is already retired.
+            log.Write("WARN", "sessions", "Conversation closed; client display notification could not be sent.");
+        }
+    }
+
+
+
     //// Loads authority only at RunGame, after 1.22.7 restores calendar state during GameReady.
     //// SaveGameLoaded is too early: anchoring there would count historical world time again on the first live tick.
-    //// No index means no initialization or replacement of save data.  Corrupt saved authority also stays untouched.
+    //// The selected exact index serves both creation and restore.  Corrupt saved authority stays untouched.
     ////
     private void LoadWorld()
     {
@@ -94,20 +112,10 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
         serverThread = Environment.CurrentManagedThreadId;
         try
         {
-            var index = suppliedIndex;
-            if (index is null && settings.AllowExactLiquidityScans)
-            {
-                index = new ScanningLiquidityIndex();
-                log.Write("WARN", "liquidity", "Operator opted into exact account scans at funding checkpoints.");
-            }
-            if (index is null)
-            {
-                Status = "LiquidityIndexUnavailable";
-                log.Write("CRIT", "startup", "Banking disabled: supply an exact no-scan index or explicitly enable AllowExactLiquidityScans.");
-                return;
-            }
+            if (liquidityIndex is ScanningLiquidityIndex)
+                log.Write("INFO", "liquidity", "Using approved exact account scans at financial-month and funding-changing checkpoints.");
             storage = new(api.WorldManager.SaveGame, log);
-            bank = storage.Load(this, index, settings);
+            bank = storage.Load(this, liquidityIndex, settings);
             if (bank is null)
             {
                 Status = "CorruptState";
@@ -275,7 +283,10 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
                 if (!reconciledPlayers.Contains(player.PlayerUID) || quarantinedPlayers.Contains(player.PlayerUID))
                     throw new BankException(BankError.SettlementQuarantined);
                 scope = sessions.Open(player, request.BankerEntity, clock.RealSeconds, bank);
-                body = new { DisplayPrecision = bank.Snapshot().Scopes[scope].DisplayPrecision, NextSequence = 1 };
+                var snapshot = bank.Snapshot();
+                body = new { DisplayPrecision = snapshot.Scopes[scope].DisplayPrecision, NextSequence = 1,
+                    settings.RecipientMode, snapshot.Market.Current.Settings.TenorsMonths,
+                    snapshot.Market.Current.Settings.MinimumCdPrincipalUnits };
             }
             else
             {
@@ -290,6 +301,10 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
                     case "statement":
                         body = StatementPage(player.PlayerUID, scope, request.Offset, request.Limit);
                         break;
+                    case "previewDeposit":
+                    case "previewWithdraw":
+                        body = PreviewPhysical(player, request);
+                        break;
                     case "names":
                         if (settings.RecipientMode != "KnownPlayerListing")
                             throw new BankException(BankError.PermissionDenied);
@@ -303,8 +318,10 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
                         break;
                     case "quoteCd":
                         bank.Advance();
-                        body = bank.QuoteCertificate(player.PlayerUID, scope, Money.Parse(request.Amount ?? ""),
+                        var quote = bank.QuoteCertificate(player.PlayerUID, scope, Money.Parse(request.Amount ?? ""),
                             request.TenorMonths);
+                        body = new { Quote = quote,
+                            ExpiresInSeconds = Math.Max(0, quote.ExpiresAtSeconds - clock.RealSeconds) };
                         break;
                     case "deposit":
                     case "withdraw":
@@ -327,6 +344,37 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
         {
             protocol.Send(player, new(request.Scope, request.Sequence, "InvalidRequest"));
         }
+    }
+
+
+
+    //// Resolves an exact cash intent for the confirmation screen without reserving funds or modifying inventory.
+    //// Accrual uses the normal statement path; commit still repeats balance, denomination, and inventory checks.
+    //// A first deposit is allowed without an account.  No other statement failure is mistaken for an empty balance.
+    ////
+    private object PreviewPhysical(IServerPlayer player, BankingRequest request)
+    {
+        if (!Enum.TryParse<Currency>(request.Currency, false, out var currency) || !Enum.IsDefined(currency))
+            throw new BankException(BankError.InvalidCurrency);
+        var withdrawal = request.Action == "previewWithdraw";
+        var precision = bank!.Snapshot().Scopes[request.Scope].DisplayPrecision;
+        var amount = Money.Parse(request.Amount ?? "", currency == Currency.Temporal ? 0 : precision);
+        if (amount.Units <= 0) throw new BankException(BankError.InvalidAmount);
+        long balance = 0;
+        try
+        {
+            var statement = bank.GetStatement(player.PlayerUID, request.Scope, 0, 1);
+            balance = currency == Currency.Rusty ? statement.RustyUnits : statement.TemporalUnits;
+        }
+        catch (BankException error) when (!withdrawal && error.Error == BankError.NoAccount)
+        {
+            // A preview must not create an account merely because the player has entered a prospective deposit.
+        }
+        Money.RequireBalance(new(withdrawal ? checked(balance - amount.Units) : checked(balance + amount.Units)));
+        using var preview = InventorySettlement.Prepare(inventoryGate, player, api.World, currency,
+            amount.Units, withdrawal);
+        return new { Action = withdrawal ? "withdraw" : "deposit", Currency = currency.ToString(),
+            Amount = amount.Gears.ToString("0.######", CultureInfo.InvariantCulture), ExactUnits = amount.Units };
     }
 
 
@@ -369,7 +417,7 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
         object? display = null;
         if (result.Error == BankError.None)
         {
-            try { display = StatementPage(player.PlayerUID, request.Scope, 0, 25); }
+            try { display = StatementPage(player.PlayerUID, request.Scope, 0, request.Limit); }
             catch (BankException)
             {
                 // The terminal mutation result remains authoritative when a fresh display is unavailable.
@@ -390,7 +438,12 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
         return new
         {
             Statement = statement with { Certificates = statement.Certificates.Skip(offset).Take(limit).ToImmutableArray() },
-            TotalCertificates = statement.Certificates.Length
+            TotalCertificates = statement.Certificates.Length,
+            WorldCalendarDays = (decimal)api.World.Calendar.TotalDays,
+            api.World.Calendar.DaysPerMonth,
+            api.World.Calendar.HoursPerDay,
+            HistoryCalendarDays = statement.History.Select(row =>
+                bank.Snapshot().Journal[checked((int)row.Sequence - 1)].WorldCalendarDays).ToArray()
         };
     }
 
@@ -402,7 +455,13 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
     {
         if (bank is null || !IsAuthenticated(player)) return;
         var notices = bank.PendingNotices(player.PlayerUID, 50);
-        if (!notices.IsEmpty) protocol.Send(player, new(Guid.Empty, 0, "Notices", notices));
+        if (!notices.IsEmpty)
+        {
+            // Namespace client display receipts without exposing either the save identifier or the player's UID.
+            var scopeHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("firstgearbank/notices/v1/" +
+                api.WorldManager.SaveGame.SavegameIdentifier + "/" + player.PlayerUID)));
+            protocol.Send(player, new(Guid.Empty, 0, "Notices", new { ScopeHash = scopeHash, Notices = notices }));
+        }
     }
 
 
@@ -413,6 +472,8 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
     {
         RequireThread();
         sessions.Register(branch, banker, branchAvailable);
+        // This replicated hint enables interaction only; every request still proves registration on the server.
+        banker.WatchedAttributes.SetBool("firstgearbank:banker", true);
     }
 
 
@@ -422,6 +483,7 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
     public void UnregisterBanker(long entityId)
     {
         RequireThread();
+        api.World.GetEntityById(entityId)?.WatchedAttributes.SetBool("firstgearbank:banker", false);
         if (bank is not null) sessions.Unregister(entityId, bank);
     }
 
@@ -544,9 +606,9 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
             {
                 var next = configuration.Load(settings, bank?.Snapshot().Market.Current.Rate);
                 if (bank is not null && !faulted) bank.Configure(next.Economics, next.Core, next.TimeBasis);
-                var restart = next.AllowExactLiquidityScans != settings.AllowExactLiquidityScans || bank is null;
                 settings = next;
-                return TextCommandResult.Success(restart ? "Configuration loaded; liquidity selection requires restart." :
+                return TextCommandResult.Success(bank is null || faulted ?
+                    "Configuration loaded; banking remains unavailable (" + Status + ")." :
                     "Configuration loaded; economics take effect at the next financial-month boundary.");
             }
             if (words.Length == 5 && words[0] == "correct" && args.Caller.Player is IServerPlayer administrator &&

@@ -4,8 +4,8 @@
  * amount/name selection, and optional confirmation tokens.  No player UID, balance, interest rate, or permission bit
  * is accepted from the client.  The server host normalizes intent into core commands after execution-time checks.
  *
- * One protobuf envelope carries bounded UTF-8 JSON.  Both sides register this exact type on firstgearbank-v1; a future
- * client UI can reuse it without referencing core authority.  Limits are checked before JSON parsing or queueing,
+ * One protobuf envelope carries bounded UTF-8 JSON.  Both sides register this exact type on firstgearbank-v1; the
+ * client ledger uses it without constructing core authority.  Limits are checked before JSON parsing or queueing,
  * with per-connection token buckets and a global queued-work cap.  The engine deserializes the outer envelope before
  * this handler, so these limits do not replace Vintage Story's transport-level packet protections.
  * Responses must be explicitly player-safe DTOs; snapshots and persisted core sections must never enter Send.

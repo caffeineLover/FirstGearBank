@@ -30,16 +30,18 @@ internal sealed record BankerConversation(IServerPlayer Player, long EntityId, G
 internal sealed class BankerSessions
 {
     private readonly ICoreServerAPI api;
+    private readonly Action<IServerPlayer, Guid> closed;
     private readonly Dictionary<long, BankerRegistration> bankers = new();
     private readonly Dictionary<string, BankerConversation> conversations = new(StringComparer.Ordinal);
 
 
 
-    //// Borrows the live server world for identity and entity checks; persistent branch ownership remains elsewhere.
+    //// Borrows the live server world and a close-notification callback; persistent branch ownership stays elsewhere.
     ////
-    public BankerSessions(ICoreServerAPI api)
+    public BankerSessions(ICoreServerAPI api, Action<IServerPlayer, Guid> closed)
     {
         this.api = api;
+        this.closed = closed;
     }
 
 
@@ -118,7 +120,11 @@ internal sealed class BankerSessions
     ////
     public void Close(string player, BankingCoordinator bank)
     {
-        if (conversations.Remove(player, out var entry)) bank.CloseConversation(entry.Scope);
+        if (conversations.Remove(player, out var entry))
+        {
+            bank.CloseConversation(entry.Scope);
+            closed(entry.Player, entry.Scope);
+        }
     }
 
 

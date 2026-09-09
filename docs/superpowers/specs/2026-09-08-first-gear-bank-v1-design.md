@@ -1434,6 +1434,11 @@ Reset preserves the corrupt bytes for export, creates a new `RegistryEpochId`, z
 
 Normal cost must depend on involved accounts, due events, or nearby dirty topology—not all players or the whole world.
 
+Approved implementation exception (9 September 2026): exact liquidity projections may scan accounts and retained CDs
+at financial-month boundaries and funding-changing transactions.  Cache the resulting liquidity target between those
+checkpoints; ordinary ticks and quotes must not trigger scans unless due financial events require catch-up.
+This exception changes performance only, not balance caps, per-account rounding, interest, or CD-pricing rules.
+
 - Evolve market state at boundaries, not ticks.
 - Use lazy account materialization and global indexes/rate segments.
 - Index current names and account history.

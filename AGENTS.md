@@ -7,6 +7,7 @@ The user explicitly requires no test suite.  Do not create test projects, test d
 Use a Release build and focused source review for verification.  Keep implementation and documentation economical.
 The banking core belongs in `First Gear Bank/src/core` and must have no Vintage Story dependency.
 The v03 specification defines behavior; the user's latest instructions override older delivery-plan process requirements.
+The user approved exact liquidity scans at month/funding checkpoints; do not restore the old no-scan startup gate.
 
 Use descriptive responsibility-based filenames.  Every core type needs a substantive comment, including records and
 interfaces.  File overviews must explain purpose, collaborators, units, state ownership, and relevant limitations;

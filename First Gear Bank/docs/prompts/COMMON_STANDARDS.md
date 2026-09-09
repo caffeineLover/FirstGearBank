@@ -7,8 +7,6 @@
 - Keep changes focused; avoid unrelated cleanup or reformatting.
 - Use the project's configured formatter, linter, analyzer, compiler, and test tools.
 
----
-
 ## Understand Before Implementing
 Before adding features or changing behavior:
 
@@ -22,8 +20,6 @@ Before adding features or changing behavior:
 - If discoveries invalidate approved assumptions or materially change the design, pause, explain, and obtain approval
    for the revision before continuing.
 
----
-
 ## Systematic Debugging
 - Investigate the root cause rather than patching symptoms.
 - Test one hypothesis at a time; undo your unsuccessful experimental changes rather than stacking speculative fixes.
@@ -33,28 +29,17 @@ Before adding features or changing behavior:
 
 ---
 
-# 4. Configuration
+## Configuration
 
-Prefer configuration files over hard-coded values for behavior that users, operators, or deployments may reasonably need
-to change without modifying code.  This includes feature switches, thresholds, paths, schedules, limits, integration
-settings, and other operational behavior.
+- Put user/operator-adjustable behavior in configuration; keep invariants, security guarantees, and implementation constants in code.
+- Follow the existing format; otherwise prefer YAML. Do not migrate formats without approval.
+- Centralize and document defaults, fields, units, allowed values, and important interactions.
+- Validate required fields, types, ranges, and combinations. Reject invalid explicit values with clear, field-specific errors.
+- Parse safely; never deserialize arbitrary executable types.
+- Preserve backward compatibility or provide a deliberate migration path when schemas change.
+- Avoid unnecessary options; each adds documentation, testing, and compatibility obligations.
+- 
 
-Use YAML for new human-edited configuration unless the project already has an established format, an external system
-requires another format, or YAML would introduce an unreasonable dependency.  Do not migrate an existing configuration
-format without explicit approval.
-
-Configuration must:
-
-- Centralize and document defaults
-- Document fields, units, allowed values, and important interactions
-- Validate required fields, types, ranges, and combinations
-- Report invalid values with actionable, field-specific errors
-- Reject invalid explicit configuration rather than silently replacing it with defaults
-- Use safe parsing and never deserialize arbitrary executable types
-- Preserve backward compatibility or provide a deliberate migration when its schema changes
-
-Do not expose structural invariants, non-negotiable security guarantees, or every implementation constant merely to make
-the code more configurable.  Every option adds documentation, testing, and compatibility obligations.
 
 ---
 

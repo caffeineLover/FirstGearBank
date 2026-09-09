@@ -9,8 +9,10 @@ Preserve the user's responsibility notes and unrelated edits.  Do not add a test
 4. Wire the adapter into the mod lifecycle and document the integration surface for Banker content and client UI.
 5. Build Release and review authorization, corruption handling, item accounting, and documentation conventions.
 
-Exact scan-based liquidity requires explicit user approval because it relaxes the specification's no-account-scan rule.
-Until that decision is resolved, do not silently install the scanning implementation as the production default.
+The user has approved exact scans at financial-month and funding-changing checkpoints as a performance exception.
+Apply that decision by selecting the existing scanner by default, removing the obsolete configuration/startup gate,
+retaining the core's cached liquidity target between checkpoints, and checking the full Release build and call sites.
+Custom exact-index injection remains supported; balances, rounding, pricing formulas, and save schemas do not change.
 The adapter must preserve corrupt save bytes, never recreate established missing authority, and never claim that the
 game's independent inventory/world saves are atomically durable.  Unresolved settlements remain quarantined.
 
@@ -19,4 +21,4 @@ Implemented the adapter, native denomination, and integration surface.  Focused 
 monetary sequences, and checking player-co-serialized receipts against retained bank settlements.
 Release compilation passes with zero warnings and errors; no tests or game-world execution were performed.
 Full branch content/lifecycle, client UI, printing/Max controls, optional-mod UI/currency adapters, and automatic recovery
-remain outside this implemented adapter milestone.  Liquidity scans are an explicit false-by-default opt-in.
+remain outside this implemented adapter milestone.  Exact checkpoint scans are now the approved production default.
