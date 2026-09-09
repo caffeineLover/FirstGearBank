@@ -26,4 +26,10 @@
       <Folder Include="docs\specs\" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Compile Remove="src\core\**\*.cs" />
+      <EmbeddedResource Remove="src\core\**\*" />
+      <ProjectReference Include="src\core\FirstGearBank.Core.csproj" />
+    </ItemGroup>
+
 </Project>

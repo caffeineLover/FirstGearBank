@@ -1,46 +1,32 @@
 # Common Coding Standards
 
-Standards version: 0.5.0
-
-These standards apply to all human-maintained code written, modified, reviewed, or refactored for the user's projects.
-Read this document together with every language profile that applies to the task.
-
-Project or team policies and enforced repository configuration take precedence.  Otherwise, these standards are mandatory
-unless the user explicitly overrides a rule for a specific task.
-
----
-
-# 1. Code Quality
-
-Write code that is easy to understand, maintain, review, test, and extend.  Prefer focused responsibilities, descriptive
-names, explicit control flow, and visible side effects.  Comments and documentation must supplement clear code rather than
-excuse misleading names, excessive nesting, hidden behavior, or unrelated responsibilities.
-
-Preserve established behavior unless the task requests a change.  Keep changes focused, avoid unrelated reformatting, and
-use the project's configured formatter, linter, analyzer, compiler, and test tools.
+## Code Quality
+- Prefer clear, maintainable code over cleverness; avoid unnecessary abstractions.
+- Keep responsibilities focused, control flow explicit, and side effects visible.
+- Preserve existing behavior unless the task explicitly requests a change.
+- Keep changes focused; avoid unrelated cleanup or reformatting.
+- Use the project's configured formatter, linter, analyzer, compiler, and test tools.
 
 ---
 
-# 2. Understand Before Implementing
+## Understand Before Implementing
+- Before adding features or changing behavior:
 
-Before implementing a feature or changing behavior, inspect the relevant code, documentation, configuration, and recent
-history.  Confirm the problem, desired outcome, constraints, success criteria, and boundaries.  Ask focused questions when
-material details are missing or ambiguous; do not silently invent requirements.
+1. Inspect relevant code, documentation, configuration, and recent history.  Ask about material gaps or ambiguities;
+    do not invent requirements.
 
-Follow this progression: idea → clarified design → implementation plan → code.
+2. Explain what will change, how it will work, and why.  For nontrivial work, compare alternatives and justify your recommendation.
 
-Keep design and planning separate.  The design defines what will be built, why it is needed, its behavior, boundaries, and
-acceptance criteria.  After the user approves the design, create an implementation plan describing how to build it,
-including affected components, ordered steps, risks, and validation.  Begin coding only after both stages are complete.
+3. Wait for the user's explicit design approval.
 
-For non-trivial work, propose viable approaches with their important tradeoffs and recommend one.  Present a concise design
-covering the behavior, responsibilities, interactions, data flow, failure handling, and validation strategy that matter to
-the change.  Scale this process to the task: a small change may need only a few sentences, while a complex change may need a
-structured design.
+4. Create a separate implementation plan covering components, ordered steps, risks, and validation. Only then code.
 
-Do not begin implementation until the user explicitly approves the design.  If discoveries during implementation invalidate
-an approved assumption or materially change the design, pause, explain the new information, and obtain approval for the
-revised design before continuing.
+- Scale detail to the task.
+- If discoveries invalidate approved assumptions or materially change the design, pause, explain, and obtain approval
+   for the revision before continuing.
+
+
+
 
 ---
 

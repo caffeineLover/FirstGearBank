@@ -1,5 +1,8 @@
 # First Gear Bank v1 Foundation Implementation Plan
 
+> Superseded for current execution by `2026-09-09-banking-core.md`.  The user removed the test-suite requirement
+> and authorized direct implementation in `First Gear Bank/src/core`.  Test-project and TDD steps below are historical.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the verified, test-driven foundation for First Gear Bank: a safe package pipeline, engine-independent banking
