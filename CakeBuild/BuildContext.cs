@@ -12,7 +12,7 @@ namespace CakeBuild;
 // ReSharper disable once ClassNeverInstantiated.Global
 public class BuildContext : FrostingContext
 {
-	public const string ProjectName = "First_Gear_Bank";
+	public const string ProjectName = "First Gear Bank";
 
 	public string BuildConfiguration { get; }
 	public string Version { get; }

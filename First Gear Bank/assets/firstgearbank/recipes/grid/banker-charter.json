@@ -1,0 +1,12 @@
+{
+  "ingredientPattern": "FCF,FPF,FGF",
+  "width": 3,
+  "height": 3,
+  "ingredients": {
+    "F": { "type": "item", "code": "game:firewood", "quantity": 1 },
+    "C": { "type": "item", "code": "game:charcoal", "quantity": 1 },
+    "P": { "type": "item", "code": "game:paper-parchment", "quantity": 1 },
+    "G": { "type": "item", "code": "game:gear-rusty", "quantity": 1, "consume": false }
+  },
+  "output": { "type": "block", "code": "firstgearbank:banker-charter-wall-north", "quantity": 1 }
+}

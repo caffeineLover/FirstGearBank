@@ -16,8 +16,9 @@ Build the mod with `VINTAGE_STORY` pointing to the installed 1.22.7 game directo
 dotnet build "First Gear Bank/First Gear Bank.csproj" -c Release
 ```
 
-The mod references the installed `VintagestoryAPI.dll`, `VintagestoryLib.dll`, and `Lib/protobuf-net.dll` without
-bundling game assemblies.  The concrete calendar dependency exposes the named sleep modifier for runtime interest.
+The mod references the installed `VintagestoryAPI.dll`, `VintagestoryLib.dll`, `Lib/protobuf-net.dll`,
+`Mods/VSEssentials.dll`, and `Mods/VSSurvivalMod.dll` without bundling game assemblies.  The concrete calendar exposes
+the named sleep modifier for runtime interest; the standard game mods supply native humanoid rendering and AI.
 
 There is no test suite, per the user's instruction.  Build success is not gameplay verification.
 
@@ -41,23 +42,55 @@ It projects each account separately at financial-month boundaries and funding-ch
 liquidity target is cached between checkpoints; ordinary ticks and quotes do not scan unless due events require catch-up.
 Balance caps, per-account rounding, interest, and CD pricing are unchanged.  A custom exact index can still be supplied.
 
-The server adapter implements lifecycle/save staging, comment-preserving JSONC loading, bounded file diagnostics,
+The server adapter implements lifecycle/save staging, YAML loading, bounded file diagnostics,
 trusted calendar/runtime readings, authenticated player observations, Banker conversation validation, bounded network
 dispatch, administrator corrections, personal-inventory preflight/rollback, and acknowledged notification delivery.
 It waits until `RunGame` to restore financial-clock anchors and stages authority during disposal before the final engine save.
 
-Configuration is `<game data>/ModConfig/firstgearbank.jsonc`.  Existing configuration files are never rewritten by load
-or reload.  The obsolete `AllowExactLiquidityScans` setting is ignored with a diagnostic, including old `false` values;
-no opt-in or custom index is required to start banking.  This change does not clear corruption or recovery quarantines.
+Configuration is `<game data>/ModConfig/firstgearbank.yaml`.  The mod creates a documented YAML file on first start and
+does not read JSONC.  Existing YAML files are never rewritten by load or reload.  Exact liquidity scans are automatic at
+financial-month and funding-changing checkpoints; no opt-in or custom index is required to start banking.
 
 Administrators with `controlserver` can use `/bankadmin status`, `/bankadmin reload`, and
 `/bankadmin correct name Rusty|Temporal signedAmount reason`.  Corrections require an authenticated player and an
 existing target account.  Trusted server integrations can also call `CorrectBalance` with a related correction ID.
-Config Lib remains optional; its custom UI adapter is not implemented, so direct JSONC and the reload command are used.
+Config Lib remains optional.  When present, it discovers the bundled settings definition and edits the same YAML file;
+after saving either there or in a text editor, use `/bankadmin reload` to apply the settings.
 
-Banker content must call `Server.RegisterBanker(branchId, entity, availabilityPredicate)` on the server thread after
-validating and spawning its branch's Banker, and `UnregisterBanker` on removal.  The predicate must include current
-branch availability and damage cutoffs.  Sessions enforce same-dimension six-block reach and a five-minute idle timeout.
+`BankerLifecycle` now manages the custom `firstgearbank:banker` entity, persistent homes, and death/replacement state.
+It reuses vanilla humanoid art and navigation, not a trader inventory or shopping cart.  Living Bankers idle at home,
+can flee damage, and prioritize returning to safe interior space.  Death drops nothing and changes no customer money.
+Replacement waits use the configured `BankerReplacement` range (default 3–7 ordinary in-game days), sampled once and
+saved independently of financial time.  Unloading never starts replacement; ambiguous saved/entity evidence disables
+the affected home instead of spawning another Banker.  Safe placement never force-loads terrain or alters blocks.
+
+Administrators with `controlserver` can look at nearby clear solid ground and run `/bankernpc place`.  Move clear of
+the standing position if staffing is delayed by occupancy.  Look at the NPC and run `/bankernpc remove reason` to
+retire its home without replacement.  These manual public access points grant no land claim, Charter status, spacing
+reservation, or account privilege.
+
+The craftable `firstgearbank:banker-charter` is a stateless wall plaque.  Its shaped recipe is `F C F / F P F / F G F`:
+firewood, charcoal, parchment, and a non-consumed rusty gear.  A placed plaque activates only in one enclosed native
+room with 5–13-block interior width and length, 2–13-block height, a complete supported 5×5 standing footprint, one
+door, exactly one Charter, a table or desk, chair or stool, artificial light, ordinary storage, and a potted flower.
+The placer must have ordinary build permission over the exact captured interior, shell, dependencies, and furnishings.
+
+Activation persists immutable exact-position protection, the configured same-dimension spacing reservation (default
+32 blocks), and one sampled first-arrival wait (default 2–5 ordinary days).  Doors, storage, seats, lights, the Banker,
+and Charter removal remain usable; player structural changes and mutation tools are denied.  Environmental damage and
+direct third-party world writes are not blocked or repaired.  Before the first NPC is assigned, changed premises pause
+the saved remaining wait and staffing gate; repair resumes the same wait without rerolling it.
+
+Removing the Charter immediately releases topology and spacing.  An assigned Banker remains available only until the
+saved displayed 17:00 cutoff; an unstaffed arrival is cancelled.  A replacement plaque creates a new branch and wait.
+Administrators with `controlserver` may stand inside one accepted branch and use `/bankbranch decommission reason` to
+release it immediately while leaving blocks and all finance unchanged.  Compatible furnishing blocks may opt in with
+the boolean attributes `firstgearbankTable`, `firstgearbankSeat`, `firstgearbankArtificialLight`, or
+`firstgearbankFurniture` (floor-footprint occupancy only); unsupported custom multi-position mutation behavior cannot
+be protected through public APIs.
+
+The lifecycle calls `Server.RegisterBanker` and `UnregisterBanker` on the server thread with an execution-time
+availability predicate.  Sessions enforce same-dimension six-block reach and a five-minute idle timeout.
 Only the authenticated player's own hotbar and backpack participate in banking inventory changes.
 Registration sets a replicated interaction hint: right-clicking that Banker opens the native personal ledger.
 Content with its own interaction handling can instead call `Client.OpenBanker(entityId)` on the mod system's client.
@@ -72,8 +105,8 @@ The `firstgearbank-v1` channel registers `BankingPacket`, carrying UTF-8 JSON wi
 `deposit`, `withdraw`, `transfer`, `buyCd`, and
 `acknowledge`.  Recognized monetary mutations use the core's sequenced retry contract.  Incoming JSON is limited to four
 KiB, pages to fifty entries, and queued requests to four per connection and 256 globally.  Physical Max controls,
-printing, branch topology/protection, charter/replacement spawning, natural-branch generation,
-and registry repair administration remain unfinished; this is not yet a playable full-spec release.
+printing, natural-branch generation, and registry repair administration remain unfinished; this is not yet a playable
+full-spec release.
 
 The client ledger contains account, cash, transfer, CD, history, and cumulative-total screens with localized Banker
 framing.  Every money operation has a server-resolved confirmation; cash previews do not reserve funds or inventory.
@@ -87,8 +120,9 @@ persistence.  A bounded cache retains 2,048 notice IDs per opaque world/player n
 `<game data>/Cache/firstgearbank`; it stores no names, UIDs, message contents, or balances.  A crash between display
 and cache persistence can still repeat a notice; this is not a guarantee of exactly-once visible delivery.
 
-Client UI code has been Release-build/source checked, not verified in a running game.  Banker NPC assets/spawning are
-still absent; this client change does not make the entire mod playable without a trusted Banker content integration.
+The client, Banker NPC, and Charter branch flow have been Release-build/source checked, not verified in a running game.
+NPC and Charter save staging is not an atomic disk transaction with entity saves, and quarantined homes require
+explicit future recovery support.
 
 Server-only receipts are co-serialized with 1.22.7 personal inventories and checked against successful bank settlement
 tombstones on login.  Missing or divergent evidence and pending settlements quarantine that player's banking access.

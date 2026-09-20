@@ -1,0 +1,72 @@
+{
+  "code": "banker",
+  "class": "FirstGearBankBanker",
+  "tags": ["humanoid", "human", "habitat-land"],
+  "weight": 80,
+  "canClimb": false,
+  "hitboxSize": { "x": 0.6, "y": 1.75 },
+  "deadHitboxSize": { "x": 0.75, "y": 0.5 },
+  "client": {
+    "renderer": "Shape",
+    "shape": { "base": "game:entity/humanoid/trader-female" },
+    "texture": { "base": "game:entity/humanoid/villagerbody/skin/normal1" },
+    "behaviors": [
+      { "code": "repulseagents" },
+      { "code": "controlledphysics", "stepHeight": 1.01 },
+      { "code": "interpolateposition" }
+    ],
+    "animations": [
+      { "code": "die", "animation": "die", "animationSpeed": 1.75, "weight": 10, "blendMode": "AddAverage" },
+      { "code": "hurt", "animation": "hurt", "animationSpeed": 2, "blendMode": "AddAverage" },
+      { "code": "formal-walk", "animation": "formal-walk", "animationSpeed": 1.5 }
+    ]
+  },
+  "attributes": {
+    "disableElements": ["breasts"],
+    "frostOverlayThreshold": -10,
+    "shouldSwivelFromMotion": false,
+    "outfitConfigFileName": "game:traderaccessories-male",
+    "outfitversion": 1,
+    "outfit": {
+      "bodyskin": "bodyskin-1",
+      "head": "head-felthat",
+      "upperbody": "upperbody-longsleeve-shirt11dark",
+      "upperbodyover": "upperbodyover-shortsleeve-overshirt6fancyvest",
+      "lowerbody": "lowerbody-hose3scholar",
+      "foot": "foot-boots1",
+      "waist": "waist-ledger"
+    }
+  },
+  "server": {
+    "attributes": { "pathfinder": { "minTurnAnglePerSec": 720, "maxTurnAnglePerSec": 1440 } },
+    "behaviors": [
+      { "code": "repulseagents" },
+      { "code": "controlledphysics", "stepHeight": 1.01 },
+      { "code": "health", "currenthealth": 25, "maxhealth": 25 },
+      {
+        "code": "emotionstates",
+        "states": [
+          { "code": "fleeondamage", "duration": 10, "chance": 1, "slot": 0, "priority": 1, "accumType": "max" }
+        ]
+      },
+      {
+        "code": "taskai",
+        "aitasks": [
+          {
+            "code": "fleeentity", "entityCodes": ["player", "wolf-*", "bear-*"], "priority": 2,
+            "movespeed": 0.035, "seekingRange": 12, "animation": "Run", "animationSpeed": 1.75,
+            "whenInEmotionState": "fleeondamage"
+          },
+          { "code": "firstgearbank-returnhome", "priority": 1.5, "animation": "formal-walk" },
+          {
+            "code": "idle", "priority": 1, "minduration": 3000, "maxduration": 9000,
+            "mincooldown": 2000, "maxcooldown": 5000, "animation": "idle"
+          },
+          { "code": "lookaround", "priority": 0.5 }
+        ]
+      },
+      { "code": "entitystatetags" }
+    ]
+  },
+  "drops": []
+}

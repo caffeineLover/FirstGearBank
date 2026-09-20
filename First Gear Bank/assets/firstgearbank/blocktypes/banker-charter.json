@@ -1,0 +1,57 @@
+{
+  "code": "banker-charter",
+  "class": "FirstGearBankCharter",
+  "entityClass": "FirstGearBankCharterEntity",
+  "variantgroups": [
+    { "code": "attachment", "states": ["wall"] },
+    { "code": "side", "states": ["north", "east", "south", "west"] }
+  ],
+  "shapebytype": {
+    "*-wall-north": { "base": "game:block/wood/signwall", "rotateY": 0 },
+    "*-wall-east": { "base": "game:block/wood/signwall", "rotateY": 270 },
+    "*-wall-south": { "base": "game:block/wood/signwall", "rotateY": 180 },
+    "*-wall-west": { "base": "game:block/wood/signwall", "rotateY": 90 }
+  },
+  "attributes": {
+    "maxWidth": 200,
+    "maxHeight": 96,
+    "fontSize": 17,
+    "textVoxelOffsetX": 0,
+    "textVoxelOffsetY": 0,
+    "textVoxelOffsetZ": 0,
+    "textVoxelWidth": 13,
+    "textVoxelHeight": 7,
+    "boldFont": true
+  },
+  "textures": {
+    "sign": { "base": "game:block/wood/sign/front" },
+    "back": { "base": "game:block/wood/sign/back" }
+  },
+  "creativeinventory": {
+    "general": ["banker-charter-wall-north"],
+    "decorative": ["banker-charter-wall-north"]
+  },
+  "blockmaterial": "Wood",
+  "lightAbsorption": 0,
+  "faceCullMode": "NeverCull",
+  "sidesolid": { "all": false },
+  "sideopaque": { "all": false },
+  "replaceable": 0,
+  "resistance": 3,
+  "combustibleProps": { "burnTemperature": 600, "burnDuration": 10 },
+  "collisionbox": null,
+  "selectionbox": {
+    "x1": 0.0625, "y1": 0.3125, "z1": 0,
+    "x2": 0.9375, "y2": 0.8125, "z2": 0.0625,
+    "rotateYByType": {
+      "*-wall-north": 0,
+      "*-wall-east": 270,
+      "*-wall-south": 180,
+      "*-wall-west": 90
+    }
+  },
+  "sounds": { "place": "game:block/planks", "break": "game:block/planks", "hit": "game:block/planks" },
+  "rainPermeable": true,
+  "materialDensity": 600,
+  "guiTransform": { "rotation": { "x": -22.6, "y": 135, "z": 0 }, "scale": 1.72 }
+}

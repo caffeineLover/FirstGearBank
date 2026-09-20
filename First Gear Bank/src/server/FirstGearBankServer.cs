@@ -1,6 +1,6 @@
 /*
  * Hosts one world's banking coordinator behind Vintage Story's authoritative server lifecycle.
- * Startup loads validated JSONC, selects the approved exact checkpoint scanner unless an index is supplied, restores
+ * Startup loads validated YAML, selects the approved exact checkpoint scanner unless an index is supplied, restores
  * world authority, and observes authenticated connected players.  World-save hooks restage immutable bank snapshots;
  * Disconnect, suspension, resume, and disposal retire transient access without transferring customer money.
  *
@@ -55,6 +55,14 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
     private bool faulted;
     private decimal nextNoticeDelivery;
     public string Status { get; private set; } = "Starting";
+    // NPC death samples current adapter settings; already sampled replacement timers retain their stored duration.
+    internal (double Minimum, double Maximum) ReplacementDelayRange =>
+        (settings.ReplacementMinimumDays, settings.ReplacementMaximumDays);
+    // New Charters sample current adapter settings once; saved waits are never changed by configuration reload.
+    internal (double Minimum, double Maximum) CharterArrivalDelayRange =>
+        (settings.CharterMinimumDays, settings.CharterMaximumDays);
+    // Spacing changes affect only future branch acceptance; existing reservations are retained.
+    internal int MinimumBranchSpacing => settings.MinimumBranchSpacing;
 
 
 
@@ -125,7 +133,8 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
             Status = "Ready";
             foreach (var player in api.World.AllOnlinePlayers.OfType<IServerPlayer>()) ObservePlayer(player);
             if (api.ModLoader.IsModEnabled("configlib"))
-                log.Write("WARN", "configuration", "Config Lib detected; direct JSONC and bankadmin reload remain the supported configuration path.");
+                log.Write("INFO", "configuration",
+                    "Config Lib detected; First Gear Bank YAML settings are available in its editor.");
             log.Write("INFO", "startup", "Bank authority loaded; authenticated server adapters are ready.");
         }
         catch (Exception error)
@@ -592,7 +601,7 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
 
 
 
-    //// Handles permission-gated status, comment-preserving config reload, and name-based correction chat commands.
+    //// Handles permission-gated status, YAML config reload, and name-based correction chat commands.
     //// Console callers may inspect or reload; corrections require an authenticated player for the audit trail.
     ////
     private TextCommandResult AdminCommand(TextCommandCallingArgs args)

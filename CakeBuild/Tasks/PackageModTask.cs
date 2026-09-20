@@ -48,10 +48,3 @@ public sealed class PackageModTask : FrostingTask<BuildContext>
 		}
 	}
 }
-
-
-[TaskName("Default")]
-[IsDependentOn(typeof(DeployTask))]
-public class DefaultTask : FrostingTask
-{
-}

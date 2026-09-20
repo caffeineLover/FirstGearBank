@@ -5,6 +5,7 @@ namespace CakeBuild.Tasks;
 
 
 
+[TaskName("ZipModFolder")]
 [IsDependentOn(typeof(PackageModTask))]
 public sealed class ZipModFolderTask : FrostingTask<BuildContext>
 {
