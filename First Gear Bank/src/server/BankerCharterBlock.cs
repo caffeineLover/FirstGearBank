@@ -14,10 +14,12 @@ using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
 using Vintagestory.API.Datastructures;
-using Vintagestory.API.Server;
+using Vintagestory.API.MathTools;
 using Vintagestory.GameContent;
 
 namespace FirstGearBank.Server;
+
+
 
 /// Fixed-label wall sign that records the placing player only after ordinary sign placement succeeds.
 public sealed class BankerCharterBlock : BlockSign
@@ -152,6 +154,7 @@ public sealed class BankerCharterBlockEntity : BlockEntitySign
         text = LabelKey;
         Translateable = true;
         base.ToTreeAttributes(tree);
+        tree.SetInt("color", ColorUtil.BlackArgb);
         tree.SetString("firstgearbank:placement", placement.ToString("N"));
         tree.SetString("firstgearbank:placer", placer);
         tree.SetString("firstgearbank:status", status);
@@ -165,6 +168,7 @@ public sealed class BankerCharterBlockEntity : BlockEntitySign
     {
         tree.SetString("text", LabelKey);
         tree.SetBool("translateable", true);
+        tree.SetInt("color", ColorUtil.BlackArgb);
         base.FromTreeAttributes(tree, worldAccessForResolve);
         Guid.TryParse(tree.GetString("firstgearbank:placement"), out placement);
         placer = tree.GetString("firstgearbank:placer", string.Empty);
