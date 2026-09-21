@@ -58,8 +58,9 @@ Config Lib remains optional.  When present, it discovers the bundled settings de
 after saving either there or in a text editor, use `/bankadmin reload` to apply the settings.
 
 `BankerLifecycle` now manages the custom `firstgearbank:banker` entity, persistent homes, and death/replacement state.
-It reuses vanilla humanoid art and navigation, not a trader inventory or shopping cart.  Living Bankers idle at home,
-can flee damage, and prioritize returning to safe interior space.  Death drops nothing and changes no customer money.
+It reuses vanilla humanoid art and navigation, not a trader inventory or shopping cart.  Living Bankers idle at a safe
+central workstation, look around, can flee damage, and prioritize returning to safe interior space.  Death drops nothing
+and changes no customer money.
 Replacement waits use the configured `BankerReplacement` range (default 3–7 ordinary in-game days), sampled once and
 saved independently of financial time.  Unloading never starts replacement; ambiguous saved/entity evidence disables
 the affected home instead of spawning another Banker.  Safe placement never force-loads terrain or alters blocks.
@@ -81,8 +82,9 @@ and Charter removal remain usable; player structural changes and mutation tools 
 direct third-party world writes are not blocked or repaired.  Before the first NPC is assigned, changed premises pause
 the saved remaining wait and staffing gate; repair resumes the same wait without rerolling it.
 
-Removing the Charter immediately releases topology and spacing.  An assigned Banker remains available only until the
-saved displayed 17:00 cutoff; an unstaffed arrival is cancelled.  A replacement plaque creates a new branch and wait.
+The original placer can sneak-right-click the Charter to remove and collect it; current build access is rechecked.
+Removal immediately releases topology and spacing.  An assigned Banker remains available only until the saved displayed
+17:00 cutoff; an unstaffed arrival is cancelled.  A replacement plaque creates a new branch and wait.
 Administrators with `controlserver` may stand inside one accepted branch and use `/bankbranch decommission reason` to
 release it immediately while leaving blocks and all finance unchanged.  Compatible furnishing blocks may opt in with
 the boolean attributes `firstgearbankTable`, `firstgearbankSeat`, `firstgearbankArtificialLight`, or

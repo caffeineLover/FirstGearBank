@@ -131,8 +131,7 @@ public sealed class BankerLifecycle : IDisposable
             .ThenBy(cell => cell.Y).ThenBy(cell => cell.Z).ToImmutableArray();
         if (cells.IsEmpty) throw new ArgumentException("A Banker needs at least one permitted standing cell.");
         var logicalAnchor = BankerRosterStorage.Cell(anchor);
-        var standing = cells.OrderBy(cell => Distance(cell, logicalAnchor)).ThenBy(cell => cell.X)
-            .ThenBy(cell => cell.Y).ThenBy(cell => cell.Z).First();
+        var standing = PreferredStanding(cells, logicalAnchor);
         var home = new BankerHome(branch, logicalAnchor, standing, cells, BankerDisposition.Ready, Guid.Empty, 0,
             0, 0, 0, api.World.Calendar.TotalDays);
         BankerRosterStorage.Validate(home);
@@ -440,11 +439,17 @@ public sealed class BankerLifecycle : IDisposable
         target = null!;
         if (!loaded || failed || disposed || !FindAssignment(entity, out var home) ||
             home.Disposition != BankerDisposition.Assigned || entity.Pos.Dimension != home.Anchor.Dimension) return false;
-        // Most idle checks need only the persisted workstation, not a scan of every permitted interior cell.
-        if (alternative == 0 && SafeCell(home.Standing))
+        // A central workstation keeps the Banker in the room without making the Charter plaque his focal point.
+        if (alternative == 0)
         {
-            target = BankerRosterStorage.Center(home.Standing);
-            return true;
+            var safe = home.Interior.Where(SafeCell).ToImmutableArray();
+            if (!safe.IsEmpty)
+            {
+                var preferred = PreferredStanding(safe, home.Anchor);
+                if (preferred != home.Standing) homes[home.Branch] = home = home with { Standing = preferred };
+                target = BankerRosterStorage.Center(preferred);
+                return true;
+            }
         }
         var candidates = home.Interior.Where(SafeCell).OrderBy(cell => Distance(cell, home.Standing))
             .ThenBy(cell => cell.X).ThenBy(cell => cell.Y).ThenBy(cell => cell.Z).ToArray();
@@ -483,14 +488,13 @@ public sealed class BankerLifecycle : IDisposable
 
 
 
-    //// Prefers the persisted workstation; damaged homes use the nearest safe captured interior cell with stable ties.
+    //// Prefers the room's central safe workstation so new or replacement Bankers do not spawn against the Charter.
     //// No safe cell leaves the existing assignment intact for later repair/load rather than spawning a second NPC.
     ////
     private BankerCell? SafeStanding(BankerHome home)
     {
-        if (SafeCell(home.Standing)) return home.Standing;
-        return home.Interior.OrderBy(cell => Distance(cell, home.Standing)).ThenBy(cell => cell.X)
-            .ThenBy(cell => cell.Y).ThenBy(cell => cell.Z).FirstOrDefault(SafeCell);
+        var safe = home.Interior.Where(SafeCell).ToImmutableArray();
+        return safe.IsEmpty ? null : PreferredStanding(safe, home.Anchor);
     }
 
 
@@ -521,6 +525,21 @@ public sealed class BankerLifecycle : IDisposable
     {
         return Math.Pow((double)left.X - right.X, 2) + Math.Pow((double)left.Y - right.Y, 2) +
             Math.Pow((double)left.Z - right.Z, 2);
+    }
+
+
+
+    //// Chooses the safe cell nearest the room centroid, breaking equal distances away from the Charter anchor.
+    ////
+    private static BankerCell PreferredStanding(IReadOnlyCollection<BankerCell> cells, BankerCell anchor)
+    {
+        var centerX = cells.Average(cell => cell.X);
+        var centerY = cells.Average(cell => cell.Y);
+        var centerZ = cells.Average(cell => cell.Z);
+        return cells.OrderBy(cell => Math.Pow(cell.X - centerX, 2) + Math.Pow(cell.Y - centerY, 2) +
+                Math.Pow(cell.Z - centerZ, 2))
+            .ThenByDescending(cell => Distance(cell, anchor)).ThenBy(cell => cell.X).ThenBy(cell => cell.Y)
+            .ThenBy(cell => cell.Z).First();
     }
 
 

@@ -43,6 +43,7 @@ public sealed class CharterLifecycle : IDisposable
     private readonly Dictionary<Guid, Guid> activeByBranch = new();
     private readonly List<Guid> activePlacements = new();
     private readonly List<Guid> pendingRetirements = new();
+    private readonly HashSet<Guid> queuedRemovals = new();
     private readonly HashSet<Guid> loggedRetirementFailures = new();
     private readonly HashSet<Guid> loggedStaffingFailures = new();
     private readonly Queue<BankerCell> dirty = new();
@@ -160,6 +161,34 @@ public sealed class CharterLifecycle : IDisposable
 
 
 
+    //// Queues deliberate removal after the current interaction dispatch so destroying the selected block cannot
+    //// recursively re-enter that dispatch.  Placement identity and claim access are rechecked in the queued task.
+    ////
+    internal bool RemoveByPlayer(BankerCharterBlockEntity charter, IServerPlayer player)
+    {
+        if (!CanRemove(charter, player) || !charter.TryPlacement(out var placement, out _) ||
+            !queuedRemovals.Add(placement)) return false;
+        var position = charter.Pos.Copy();
+        api.Event.EnqueueMainThreadTask(() => CompleteQueuedRemoval(position, placement, player),
+            "firstgearbank-remove-charter");
+        return true;
+    }
+
+
+
+    //// Completes one queued removal only if the same Charter and caller authority still exist a frame later.
+    ////
+    private void CompleteQueuedRemoval(BlockPos position, Guid placement, IServerPlayer player)
+    {
+        queuedRemovals.Remove(placement);
+        if (disposed || api.World.BlockAccessor.GetBlockEntity(position) is not BankerCharterBlockEntity charter ||
+            !charter.TryPlacement(out var currentPlacement, out _) || currentPlacement != placement ||
+            !CanRemove(charter, player)) return;
+        api.World.BlockAccessor.BreakBlock(position, player);
+    }
+
+
+
     //// Marks nearby loaded plaques dirty after a successful placement without scanning unrelated world candidates.
     ////
     private void Placed(IServerPlayer player, int oldBlockId, BlockSelection selection, ItemStack stack)
@@ -189,7 +218,9 @@ public sealed class CharterLifecycle : IDisposable
         {
             var current = api.World.BlockAccessor.GetBlock(selection.Position);
             if (!failed && protection.Role.HasFlag(CharterPositionRole.Charter) &&
-                current is BankerCharterBlock) return true;
+                current is BankerCharterBlock &&
+                api.World.BlockAccessor.GetBlockEntity(selection.Position) is BankerCharterBlockEntity charter)
+                return CanRemove(charter, player);
             return false;
         }
         return !ProspectiveMultiblockTouchesProtection(player, selection);
@@ -202,11 +233,26 @@ public sealed class CharterLifecycle : IDisposable
     private bool CanUse(IServerPlayer player, BlockSelection selection)
     {
         if (!loaded || disposed || ProtectionAt(selection.Position) is not { } protection) return true;
+        if (protection.Role.HasFlag(CharterPositionRole.Charter) &&
+            api.World.BlockAccessor.GetBlockEntity(selection.Position) is BankerCharterBlockEntity charter)
+            return player.Entity.Controls.ShiftKey && CanRemove(charter, player);
         var slot = player.InventoryManager.ActiveHotbarSlot;
         var tool = slot?.Itemstack?.Collectible?.GetTool(slot);
         if (tool is EnumTool.Chisel or EnumTool.Wrench or EnumTool.Crowbar) return false;
         return (protection.Role & (CharterPositionRole.Door | CharterPositionRole.Storage |
             CharterPositionRole.Seat | CharterPositionRole.Light)) != 0;
+    }
+
+
+
+    //// Authorizes only the recorded placer or a controlserver administrator with current build access at the plaque.
+    ////
+    private bool CanRemove(BankerCharterBlockEntity charter, IServerPlayer player)
+    {
+        if (!loaded || failed || disposed || !charter.TryPlacement(out _, out var placer) ||
+            placer != player.PlayerUID && !player.HasPrivilege(Privilege.controlserver)) return false;
+        return api.World.Claims.TestAccess(player, charter.Pos, EnumBlockAccessFlags.BuildOrBreak) ==
+            EnumWorldAccessResponse.Granted;
     }
 
 

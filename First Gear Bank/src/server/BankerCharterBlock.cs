@@ -15,6 +15,7 @@ using Vintagestory.API.Common;
 using Vintagestory.API.Config;
 using Vintagestory.API.Datastructures;
 using Vintagestory.API.MathTools;
+using Vintagestory.API.Server;
 using Vintagestory.GameContent;
 
 namespace FirstGearBank.Server;
@@ -46,21 +47,34 @@ public sealed class BankerCharterBlock : BlockSign
 
 
 
-    //// Suppresses the native pigment editor because Charter wording is a fixed identity label.
+    //// Suppresses the native pigment editor and routes deliberate removal through server branch authority.
     ////
     public override bool OnBlockInteractStart(IWorldAccessor world, IPlayer byPlayer, BlockSelection blockSelection)
     {
-        return false;
+        if (byPlayer.Entity?.Controls?.ShiftKey != true) return false;
+        if (world.Side == EnumAppSide.Server && byPlayer is IServerPlayer serverPlayer &&
+            world.BlockAccessor.GetBlockEntity(blockSelection.Position) is BankerCharterBlockEntity charter)
+            world.Api.ModLoader.GetModSystem<First_Gear_BankModSystem>().Charters?
+                .RemoveByPlayer(charter, serverPlayer);
+        return true;
     }
 
 
 
-    //// Omits the native sign-writing hint because the fixed Charter label cannot be edited.
+    //// Replaces native sign-writing help with the deliberate Charter-removal gesture.
     ////
     public override WorldInteraction[] GetPlacedBlockInteractionHelp(IWorldAccessor world, BlockSelection selection,
         IPlayer forPlayer)
     {
-        return [];
+        return
+        [
+            new WorldInteraction
+            {
+                ActionLangCode = "firstgearbank:blockhelp-charter-remove",
+                HotKeyCode = "shift",
+                MouseButton = EnumMouseButton.Right
+            }
+        ];
     }
 
 
