@@ -180,11 +180,29 @@ public sealed class CharterLifecycle : IDisposable
     ////
     private void CompleteQueuedRemoval(BlockPos position, Guid placement, IServerPlayer player)
     {
-        queuedRemovals.Remove(placement);
-        if (disposed || api.World.BlockAccessor.GetBlockEntity(position) is not BankerCharterBlockEntity charter ||
-            !charter.TryPlacement(out var currentPlacement, out _) || currentPlacement != placement ||
-            !CanRemove(charter, player)) return;
-        api.World.BlockAccessor.BreakBlock(position, player);
+	    queuedRemovals.Remove(placement);
+
+	    if (disposed ||
+	        api.World.BlockAccessor.GetBlockEntity(position) is not BankerCharterBlockEntity charter ||
+	        !charter.TryPlacement(out var currentPlacement, out _) ||
+	        currentPlacement != placement ||
+	        !CanRemove(charter, player))
+	    {
+		    return;
+	    }
+
+	    var block = api.World.BlockAccessor.GetBlock(position);
+	    var stack = block.OnPickBlock(api.World, position);
+
+	    api.World.BlockAccessor.SetBlock(0, position);
+
+	    if (stack is not null && !player.InventoryManager.TryGiveItemstack(stack))
+	    {
+		    api.World.SpawnItemEntity(
+			    stack,
+			    new Vec3d(position.X + 0.5, position.Y + 0.5, position.Z + 0.5)
+		    );
+	    }
     }
 
 
@@ -220,7 +238,7 @@ public sealed class CharterLifecycle : IDisposable
             if (!failed && protection.Role.HasFlag(CharterPositionRole.Charter) &&
                 current is BankerCharterBlock &&
                 api.World.BlockAccessor.GetBlockEntity(selection.Position) is BankerCharterBlockEntity charter)
-                return CanRemove(charter, player);
+                return CanRemoveCore(charter, player);
             return false;
         }
         return !ProspectiveMultiblockTouchesProtection(player, selection);
@@ -235,7 +253,7 @@ public sealed class CharterLifecycle : IDisposable
         if (!loaded || disposed || ProtectionAt(selection.Position) is not { } protection) return true;
         if (protection.Role.HasFlag(CharterPositionRole.Charter) &&
             api.World.BlockAccessor.GetBlockEntity(selection.Position) is BankerCharterBlockEntity charter)
-            return player.Entity.Controls.ShiftKey && CanRemove(charter, player);
+            return player.Entity.Controls.ShiftKey && CanRemoveCore(charter, player);
         var slot = player.InventoryManager.ActiveHotbarSlot;
         var tool = slot?.Itemstack?.Collectible?.GetTool(slot);
         if (tool is EnumTool.Chisel or EnumTool.Wrench or EnumTool.Crowbar) return false;
@@ -245,14 +263,50 @@ public sealed class CharterLifecycle : IDisposable
 
 
 
-    //// Authorizes only the recorded placer or a controlserver administrator with current build access at the plaque.
-    ////
+    //// Performs the Charter-removal authorization checks that are safe to call from inside Vintage Story's own
+	//// block-access event callbacks.  This method deliberately does not call the land-claim API: doing so from
+	//// CanPlaceOrBreak or CanUse would re-enter the engine's access-check pipeline, invoke those callbacks again,
+	//// and recurse until the server thread overflows its stack.
+	////
+	//// Authorization here is limited to First Gear Bank's own rules.  Charter management must be active, the placed
+	//// Charter must still have valid placement metadata, and the caller must either be the player who originally
+	//// placed the Charter or hold the controlserver privilege.  Ordinary land-claim permission is checked separately
+	//// by CanRemove when the call originates outside the engine's access-check callback chain.
+	////
+    private bool CanRemoveCore(BankerCharterBlockEntity charter, IServerPlayer player)
+    {
+	    if (!loaded || failed || disposed || !charter.TryPlacement(out _, out var placer))
+		    return false;
+
+	    return placer == player.PlayerUID ||
+	           player.HasPrivilege(Privilege.controlserver);
+    }
+
+
+    
+    //// Performs the complete authorization check for an explicit player-requested Charter removal.  It first applies
+	//// First Gear Bank's own ownership/administrative rules through CanRemoveCore, then asks VS's land-claim system
+	//// whether the caller currently has BuildOrBreak access at the Charter position.
+	////
+	//// This method must only be called from code paths that originate outside VS's CanPlaceOrBreak/CanUse access
+	//// callbacks, such as the queued sneak-right-click removal request.  Claims.TestAccess itself executes the
+	//// engine's block-access pipeline, including this mod's CanPlaceOrBreak hook; calling this method from that hook
+	//// would therefore recurse through CanRemove -> Claims.TestAccess -> CanPlaceOrBreak -> CanRemove indefinitely.
+	////
+	//// Separating the Bank-specific checks from the engine claim check preserves both authorities: the original placer
+	//// or an administrator must be allowed by First Gear Bank, and VS must independently permit the actual block
+	//// block modification under the world's current claim and privilege rules.
+	////
     private bool CanRemove(BankerCharterBlockEntity charter, IServerPlayer player)
     {
-        if (!loaded || failed || disposed || !charter.TryPlacement(out _, out var placer) ||
-            placer != player.PlayerUID && !player.HasPrivilege(Privilege.controlserver)) return false;
-        return api.World.Claims.TestAccess(player, charter.Pos, EnumBlockAccessFlags.BuildOrBreak) ==
-            EnumWorldAccessResponse.Granted;
+	    if (!CanRemoveCore(charter, player))
+		    return false;
+
+	    return api.World.Claims.TestAccess(
+		    player,
+		    charter.Pos,
+		    EnumBlockAccessFlags.BuildOrBreak
+	    ) == EnumWorldAccessResponse.Granted;
     }
 
 
