@@ -5,6 +5,7 @@
         <Nullable>enable</Nullable>
         <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
         <OutputPath>bin\$(Configuration)\Mods\mod</OutputPath>
+        <RootNamespace>FirstGearBank</RootNamespace>
     </PropertyGroup>
 
     <ItemGroup>
