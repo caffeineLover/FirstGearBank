@@ -16,6 +16,7 @@
       { "code": "interpolateposition" }
     ],
     "animations": [
+	  {"code": "idle", "animation": "idle", "blendMode": "Average", "triggeredBy": {"defaultAnim": true}},
       { "code": "die", "animation": "die", "animationSpeed": 1.75, "weight": 10, "blendMode": "AddAverage" },
       { "code": "hurt", "animation": "hurt", "animationSpeed": 2, "blendMode": "AddAverage" },
       { "code": "formal-walk", "animation": "formal-walk", "animationSpeed": 1.5 }
@@ -26,7 +27,7 @@
     "frostOverlayThreshold": -10,
     "shouldSwivelFromMotion": false,
     "outfitConfigFileName": "game:traderaccessories-male",
-    "outfitversion": 1,
+    "outfitversion": 2,
     "outfit": {
       "bodyskin": "bodyskin-1",
       "head": "head-felthat",
