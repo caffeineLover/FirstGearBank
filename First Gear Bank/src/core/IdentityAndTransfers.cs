@@ -28,6 +28,7 @@ namespace FirstGearBank.Core;
 /// Identity, transfer, correction, and notification operations of the world-scoped banking coordinator.
 /// These methods share publication and request authority with the main declaration; there is no separate mutable
 /// transfer service or name list outside BankState that can bypass its revision boundary.
+// ReSharper disable once ClassCannotBeInstantiated -- Instances are created through coordinator factory paths.
 public sealed partial class BankingCoordinator
 {
 

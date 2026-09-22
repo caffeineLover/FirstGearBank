@@ -125,9 +125,11 @@ internal sealed class CharterRegistryStorage
 
     //// Rejects malformed geometry, identities, roles, and timers before they can protect blocks or create a Banker.
     ////
-    internal static void Validate(CharterBranch branch)
+    internal static void Validate(CharterBranch? branch)
     {
-        if (branch is null || branch.Anchor is null || branch.Placement == Guid.Empty || branch.Branch == Guid.Empty ||
+        if (branch is null) throw new JsonException();
+        var anchor = RequiredCell(branch.Anchor);
+        if (branch.Placement == Guid.Empty || branch.Branch == Guid.Empty ||
             string.IsNullOrWhiteSpace(branch.Placer) || branch.Placer.Length > 256 ||
             branch.Protected.IsDefaultOrEmpty || branch.Protected.Length > 12_000 ||
             branch.Interior.IsDefaultOrEmpty || branch.Interior.Length > 4096 ||
@@ -139,19 +141,37 @@ internal sealed class CharterRegistryStorage
             branch.Disposition == CharterDisposition.Active &&
                 (branch.ImmediateRetirement || branch.DepartureDay is not null || branch.RetirementApplied) ||
             branch.Disposition == CharterDisposition.Removed && branch.DepartureDay is null) throw new JsonException();
-        if (branch.Protected.Any(entry => entry is null)) throw new JsonException();
-        var cells = branch.Protected.Select(entry => entry.Cell).ToArray();
+        var protectedCells = branch.Protected.Select(RequiredProtectedCell).ToArray();
+        var cells = protectedCells.Select(entry => RequiredCell(entry.Cell)).ToArray();
+        var interior = branch.Interior.Select(RequiredCell).ToArray();
         var cellSet = cells.ToHashSet();
-        if (cells.Any(cell => cell is null || !ValidCell(cell, branch.Anchor)) ||
-            branch.Interior.Any(cell => cell is null || !ValidCell(cell, branch.Anchor)) ||
-            cellSet.Count != cells.Length || branch.Interior.Distinct().Count() != branch.Interior.Length ||
-            branch.Interior.Any(cell => !cellSet.Contains(cell)) ||
-            branch.Protected.Count(entry => entry.Role.HasFlag(CharterPositionRole.Charter)) != 1 ||
-            branch.Protected.Count(entry => entry.Cell == branch.Anchor &&
+        if (cells.Any(cell => !ValidCell(cell, anchor)) || interior.Any(cell => !ValidCell(cell, anchor)) ||
+            cellSet.Count != cells.Length || interior.Distinct().Count() != interior.Length ||
+            interior.Any(cell => !cellSet.Contains(cell)) ||
+            protectedCells.Count(entry => entry.Role.HasFlag(CharterPositionRole.Charter)) != 1 ||
+            protectedCells.Count(entry => entry.Cell == anchor &&
                 entry.Role.HasFlag(CharterPositionRole.Charter)) != 1 ||
-            branch.Protected.Any(entry => entry.Role == 0 ||
+            protectedCells.Any(entry => entry.Role == 0 ||
                 (entry.Role & ~Enum.GetValues<CharterPositionRole>().Aggregate((left, right) => left | right)) != 0))
             throw new JsonException();
+    }
+
+
+
+    //// Converts nullable deserialization input into a validated cell before geometry code may dereference it.
+    ////
+    private static BankerCell RequiredCell(BankerCell? cell)
+    {
+        return cell ?? throw new JsonException();
+    }
+
+
+
+    //// Converts nullable deserialization input into a validated protected-cell record before role checks use it.
+    ////
+    private static CharterProtectedCell RequiredProtectedCell(CharterProtectedCell? entry)
+    {
+        return entry ?? throw new JsonException();
     }
 
 

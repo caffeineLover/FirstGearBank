@@ -30,7 +30,7 @@ public enum Currency { Rusty, Temporal }
 public readonly record struct Money(long Units)
 {
     public const long Scale = 1_000_000;
-    public const long MaximumUnits = (long)int.MaxValue * Scale;
+    public const long MaximumUnits = int.MaxValue * Scale;
     public decimal Gears => (decimal)Units / Scale;
 
 

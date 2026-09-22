@@ -230,7 +230,7 @@ public sealed class BankingClient : IDisposable
     ////
     private void Receive(BankingPacket packet)
     {
-        if (disposed || packet?.Data is not { Length: > 0 and <= 131_072 }) return;
+        if (disposed || packet.Data is not { Length: > 0 and <= 131_072 }) return;
         // ReSharper disable once HeapView.ClosureAllocation
         var bytes = (byte[])packet.Data.Clone();
         var receivedGeneration = generation;
@@ -435,9 +435,9 @@ public sealed class BankingClient : IDisposable
         }
         if (Scope != Guid.Empty && !Busy)
         {
-            var banker = api.World.GetEntityById(bankerEntity);
+            var banker = api.World.GetEntityById(bankerEntity) as BankerEntity;
             var player = api.World.Player?.Entity;
-            if (banker is null || !banker.Alive || banker.WatchedAttributes.GetBool("firstgearbank:banker") != true ||
+            if (banker is null || !banker.Alive || !banker.WatchedAttributes.GetBool("firstgearbank:banker") ||
                 player is null || !player.Alive || player.Pos.Dimension != banker.Pos.Dimension ||
                 player.Pos.XYZ.SquareDistanceTo(banker.Pos.XYZ) > 36)
             {

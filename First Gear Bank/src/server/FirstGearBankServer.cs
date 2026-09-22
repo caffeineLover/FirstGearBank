@@ -300,7 +300,8 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
                     throw new BankException(BankError.SettlementQuarantined);
                 scope = sessions.Open(player, request.BankerEntity, clock.RealSeconds, bank);
                 var snapshot = bank.Snapshot();
-                body = new { DisplayPrecision = snapshot.Scopes[scope].DisplayPrecision, NextSequence = 1,
+                var scopeState = snapshot.Scopes[scope];
+                body = new { scopeState.DisplayPrecision, NextSequence = 1,
                     settings.RecipientMode, snapshot.Market.Current.Settings.TenorsMonths,
                     snapshot.Market.Current.Settings.MinimumCdPrincipalUnits };
             }
@@ -570,7 +571,8 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
     public void UnregisterBanker(long entityId)
     {
         RequireThread();
-        api.World.GetEntityById(entityId)?.WatchedAttributes.SetBool("firstgearbank:banker", false);
+        if (api.World.GetEntityById(entityId) is BankerEntity banker)
+            banker.WatchedAttributes.SetBool("firstgearbank:banker", false);
         if (bank is not null) sessions.Unregister(entityId, bank);
     }
 

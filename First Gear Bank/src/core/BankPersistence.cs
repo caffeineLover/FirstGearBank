@@ -262,8 +262,11 @@ public sealed partial class BankingCoordinator
         {
             var month = pair.Value;
             if (pair.Key != serial++ || month.Serial != pair.Key || !double.IsFinite(month.Rate) || month.Rate < 0 ||
-                !double.IsFinite(month.Theta) || month.Theta < 0 || month.Theta != month.Settings.Theta ||
-                (month.Settings.Model == RateModel.Constant && month.Rate != month.Theta) ||
+                !double.IsFinite(month.Theta) || month.Theta < 0 ||
+                BitConverter.DoubleToInt64Bits(month.Theta) !=
+                BitConverter.DoubleToInt64Bits(month.Settings.Theta) ||
+                (month.Settings.Model == RateModel.Constant &&
+                    BitConverter.DoubleToInt64Bits(month.Rate) != BitConverter.DoubleToInt64Bits(month.Theta)) ||
                 !double.IsFinite(month.LevelShock) || !double.IsFinite(month.SlopeShock) ||
                 Math.Abs(month.LevelShock) > month.Settings.LevelVariation ||
                 Math.Abs(month.SlopeShock) > month.Settings.SlopeVariation)

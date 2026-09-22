@@ -41,7 +41,7 @@ public sealed class BankerCharterBlock : BlockSign
         if (!base.TryPlaceBlock(world, byPlayer, itemstack, blockSelection, ref failureCode)) return false;
         if (world.Side == EnumAppSide.Server && world.BlockAccessor.GetBlockEntity(blockSelection.Position) is
             BankerCharterBlockEntity charter)
-            charter.RecordPlacement(byPlayer?.PlayerUID ?? string.Empty);
+            charter.RecordPlacement(byPlayer.PlayerUID);
         return true;
     }
 

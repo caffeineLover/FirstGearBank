@@ -129,7 +129,7 @@ public sealed record RecoveryAuditRecord(Guid Id, RecoveryAction Action, string 
 /// Portable, independently validated current-epoch registry snapshot used only by privileged recovery commands.
 /// SourceSha256 covers the canonical registry section; ExportedUtc describes the evidence copy, not financial time.
 public sealed record RegistryRecoverySnapshot(int Version, string WorldId, Guid Epoch, long Revision,
-    ImmutableDictionary<string, NameEntry> Names, string ExportedUtc, string SourceSha256);
+    ImmutableDictionary<string, NameEntry>? Names, string ExportedUtc, string? SourceSha256);
 
 /// Recovery export containing either a healthy structured snapshot or exact quarantined registry payload bytes.
 public sealed record RegistryRecoveryExport(string WorldId, RegistryRecoverySnapshot? Snapshot,

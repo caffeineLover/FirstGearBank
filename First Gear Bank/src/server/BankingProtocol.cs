@@ -78,7 +78,7 @@ internal sealed class BankingProtocol : IDisposable
     ////
     private void Receive(IServerPlayer player, BankingPacket packet)
     {
-        if (packet?.Data is not { Length: > 0 and <= 4096 }) return;
+        if (packet.Data is not { Length: > 0 and <= 4096 }) return;
         lock (gate)
         {
             if (disposed || pending >= 256) return;

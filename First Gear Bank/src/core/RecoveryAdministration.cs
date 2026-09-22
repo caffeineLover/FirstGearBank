@@ -18,6 +18,7 @@ using System.Text;
 namespace FirstGearBank.Core;
 
 /// Privileged recovery portion of the serialized world coordinator.
+// ReSharper disable once ClassCannotBeInstantiated -- Instances are created through coordinator factory paths.
 public sealed partial class BankingCoordinator
 {
 
@@ -48,20 +49,20 @@ public sealed partial class BankingCoordinator
 
     //// Atomically installs one separately supplied same-world registry and invalidates all transient token authority.
     ////
-    public BankResult RestoreRegistryRecovery(RegistryRecoverySnapshot recovery, RecoveryContext context)
+    public BankResult RestoreRegistryRecovery(RegistryRecoverySnapshot? recovery, RecoveryContext context)
     {
         lock (gate)
         {
             RequireFinance();
             ValidateRecoveryContext(context);
-            if (!state.RegistryQuarantined || recovery.Version != 1 || recovery.WorldId != state.WorldId ||
-                recovery.Names is null ||
+            if (recovery is null || !state.RegistryQuarantined || recovery.Version != 1 ||
+                recovery.WorldId != state.WorldId || recovery.Names is not { } names ||
                 !DateTimeOffset.TryParse(recovery.ExportedUtc, CultureInfo.InvariantCulture,
                     DateTimeStyles.RoundtripKind, out _) || !ValidRegistryHash(recovery))
                 throw new BankException(BankError.CorruptState);
             var prior = state.Revision;
             var revision = checked(prior + 1);
-            var candidate = RestoreRegistry(state, new(recovery.Epoch, recovery.Revision, recovery.Names)) with
+            var candidate = RestoreRegistry(state, new(recovery.Epoch, recovery.Revision, names)) with
             {
                 RegistryQuarantined = false,
                 Scopes = ImmutableDictionary<Guid, ScopeState>.Empty,
@@ -225,12 +226,12 @@ public sealed partial class BankingCoordinator
     ////
     private static bool ValidRegistryHash(RegistryRecoverySnapshot recovery)
     {
-        if (recovery.SourceSha256?.Length != 64) return false;
+        if (recovery.SourceSha256 is not { Length: 64 } sourceHash || recovery.Names is not { } names) return false;
         try
         {
             var registry = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(
-                new RegistrySection(recovery.Epoch, recovery.Revision, recovery.Names), JsonOptions);
-            return CryptographicOperations.FixedTimeEquals(Convert.FromHexString(recovery.SourceSha256),
+                new RegistrySection(recovery.Epoch, recovery.Revision, names), JsonOptions);
+            return CryptographicOperations.FixedTimeEquals(Convert.FromHexString(sourceHash),
                 SHA256.HashData(registry));
         }
         catch (FormatException)

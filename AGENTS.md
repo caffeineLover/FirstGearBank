@@ -2,7 +2,7 @@
 
 ## Read 
     - `First Gear Bank/docs/prompts/COMMON_STANDARDS.md`
-    - `First Gear Bank/docs/prompts/CHARP_STANDARDS.md`
+    - `First Gear Bank/docs/prompts/CSHARP_STANDARDS.md`
     - `First Gear Bank/docs/prompts/VINTAGE_STORY_STANDARDS.md`
     - `First Gear Bank/docs/prompts/PROJECT_HYGIENE.md`
 

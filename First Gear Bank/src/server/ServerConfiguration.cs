@@ -203,7 +203,7 @@ internal sealed class ServerConfiguration
         if (value is null) return fallback;
         if (value is YamlScalarNode scalar && double.TryParse(scalar.Value, NumberStyles.Float,
                 CultureInfo.InvariantCulture, out var result) && double.IsFinite(result) && result >= minimum &&
-            result <= maximum && (!integer || Math.Truncate(result) == result)) return result;
+            result <= maximum && (!integer || double.IsInteger(result))) return result;
         Invalid(field);
         return fallback;
     }

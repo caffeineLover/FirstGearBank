@@ -219,7 +219,7 @@ public sealed partial class BankingCoordinator
                 var sample = host.SampleClock();
                 var commandId = Guid.NewGuid();
                 candidate = FinanceEngine.Advance(state, sample, liquidityIndex, commandId);
-                candidate = ApplyCommand(candidate, context, command, scope, sample, commandId);
+                candidate = ApplyCommand(candidate, context, command, sample, commandId);
                 operations = candidate.Journal.Skip(before.Journal.Count).Select(r => r.OperationId).ToImmutableArray();
             }
             catch (BankException exception)
@@ -291,7 +291,7 @@ public sealed partial class BankingCoordinator
     //// Physical amounts must be whole temporal gears or quarter rusty gears, and insufficient funds or caps reject
     //// through ledger validation.  Rusty funding changes refresh liquidity at the same financial instant.
     ////
-    private BankState ApplyCommand(BankState candidate, CommandContext context, BankCommand command, ScopeState scope,
+    private BankState ApplyCommand(BankState candidate, CommandContext context, BankCommand command,
         ClockSample sample, Guid commandId)
     {
         var player = context.Request.Player;

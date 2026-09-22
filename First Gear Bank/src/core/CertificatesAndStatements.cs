@@ -26,6 +26,7 @@ namespace FirstGearBank.Core;
 /// CD issuance and statement-view portion of the world coordinator.
 /// Pricing reads published rate/liquidity authority, purchase builds an atomic financial candidate, and statement
 /// methods translate privileged records into display data without exposing customer identity keys.
+// ReSharper disable once ClassCannotBeInstantiated -- Instances are created through coordinator factory paths.
 public sealed partial class BankingCoordinator
 {
 
