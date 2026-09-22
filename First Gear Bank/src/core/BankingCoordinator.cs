@@ -31,7 +31,7 @@ namespace FirstGearBank.Core;
 /// Public snapshots contain internal identities, while dedicated view methods produce player-safe responses.
 public sealed partial class BankingCoordinator
 {
-    private readonly System.Threading.Lock gate = new();
+    private readonly Lock gate = new();
     private readonly IBankingHost host;
     private readonly IExactLiquidityIndex liquidityIndex;
     private BankState state;
