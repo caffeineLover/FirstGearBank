@@ -1,0 +1,14 @@
+{
+  "code": "bank-statement",
+  "class": "FirstGearBankPrintedStatement",
+  "maxstacksize": 1,
+  "shape": { "base": "game:block/wood/crate/label-paper" },
+  "combustibleProps": { "burnTemperature": 600, "burnDuration": 5 },
+  "materialDensity": 210,
+  "guiTransform": {
+    "translation": { "x": 0, "y": 0, "z": 0 },
+    "rotation": { "x": 42, "y": 34, "z": -33 },
+    "origin": { "x": 0.53, "y": 0.55, "z": 0 },
+    "scale": 2.45
+  }
+}

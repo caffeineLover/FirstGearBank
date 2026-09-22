@@ -1,0 +1,12 @@
+{
+  "code": "natural-bank-strongbox",
+  "class": "FirstGearBankNaturalStrongbox",
+  "blockmaterial": "Wood",
+  "shape": { "base": "game:block/wood/crate/normal-closed" },
+  "textures": {
+    "sides": { "base": "game:block/wood/crate/oak-sides" },
+    "frame-generic": { "base": "game:block/wood/crate/frame-generic" }
+  },
+  "resistance": 8,
+  "creativeinventory": {}
+}

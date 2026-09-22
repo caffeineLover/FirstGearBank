@@ -1,0 +1,8 @@
+{
+  "code": "statement-scrap-compost",
+  "sealHours": 480,
+  "ingredients": [
+    { "type": "item", "code": "firstgearbank:statement-scrap", "quantity": 16 }
+  ],
+  "output": { "type": "item", "code": "compost", "stackSize": 1 }
+}

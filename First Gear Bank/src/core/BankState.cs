@@ -107,7 +107,33 @@ public sealed record InventoryDelta(string InventoryId, int Slot, string BeforeS
 /// Finalized records remain replay evidence, while unfinished restored records quarantine the affected player's access.
 public sealed record Settlement(Guid Id, RequestKey Request, CommandKind Direction, Currency Currency,
     long Units, InventoryManifest Manifest, SettlementPhase Phase, ImmutableArray<Guid> Operations,
-    ImmutableArray<JournalRecord> PlannedRecords);
+    ImmutableArray<JournalRecord> PlannedRecords, SettlementResolution? Resolution = null);
+
+/// Administrator's explicit finding for whether the physical side of an ambiguous settlement reached saved inventory.
+public enum SettlementFinding { InventoryApplied, InventoryNotApplied }
+
+/// Durable categories for privileged recovery actions that do not rewrite prior financial history.
+public enum RecoveryAction { RegistryRestore, RegistryReset, SettlementResolution }
+
+/// Trusted server-supplied administrator attribution required before any recovery candidate can be published.
+public sealed record RecoveryContext(string Administrator, string Reason, string UtcTimestamp);
+
+/// Immutable settlement-resolution evidence retained with the original manifest and planned journal records.
+public sealed record SettlementResolution(SettlementFinding Finding, string Administrator, string Reason,
+    string UtcTimestamp, long Revision);
+
+/// Immutable world-level audit event for registry and inventory recovery administration.
+public sealed record RecoveryAuditRecord(Guid Id, RecoveryAction Action, string Administrator, string Reason,
+    string UtcTimestamp, Guid? Target, SettlementFinding? Finding, long PriorRevision, long ResultingRevision);
+
+/// Portable, independently validated current-epoch registry snapshot used only by privileged recovery commands.
+/// SourceSha256 covers the canonical registry section; ExportedUtc describes the evidence copy, not financial time.
+public sealed record RegistryRecoverySnapshot(int Version, string WorldId, Guid Epoch, long Revision,
+    ImmutableDictionary<string, NameEntry> Names, string ExportedUtc, string SourceSha256);
+
+/// Recovery export containing either a healthy structured snapshot or exact quarantined registry payload bytes.
+public sealed record RegistryRecoveryExport(string WorldId, RegistryRecoverySnapshot? Snapshot,
+    ImmutableArray<byte> QuarantinedBytes, string Sha256);
 /// Held CD liquidity-spread target and the observed adjustment at its last financial-time checkpoint.
 /// Between checkpoints the observation decays toward Target using this stored half-life, without quote-driven writes.
 public sealed record LiquidityState(FinancialInstant Checkpoint, double Observed, double Target, double HalfLifeMonths);
@@ -164,6 +190,7 @@ public sealed record BankState
     public ImmutableDictionary<Guid, Notice> Notices { get; init; } = ImmutableDictionary<Guid, Notice>.Empty;
     public ImmutableDictionary<string, long> DeliveryWatermarks { get; init; } = ImmutableDictionary<string, long>.Empty;
     public ImmutableDictionary<Guid, Settlement> Settlements { get; init; } = ImmutableDictionary<Guid, Settlement>.Empty;
+    public ImmutableList<RecoveryAuditRecord> RecoveryAudit { get; init; } = [];
     // History stores journal sequence numbers; total keys combine currency with an operation or transfer direction.
     public ImmutableDictionary<string, ImmutableList<long>> History { get; init; } =
         ImmutableDictionary<string, ImmutableList<long>>.Empty;

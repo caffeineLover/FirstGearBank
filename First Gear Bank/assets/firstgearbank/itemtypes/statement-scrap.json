@@ -1,0 +1,8 @@
+{
+  "code": "statement-scrap",
+  "maxstacksize": 64,
+  "shape": { "base": "game:block/wood/crate/label-paper" },
+  "combustibleProps": { "burnTemperature": 600, "burnDuration": 5 },
+  "materialDensity": 150,
+  "creativeinventory": { "general": ["*"], "items": ["*"] }
+}

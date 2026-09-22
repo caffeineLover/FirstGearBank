@@ -8,7 +8,8 @@
  * and before/after inventory manifest.  Client packets cannot provide or acknowledge these receipts.  The digest is a
  * consistency check on server-owned data, not a substitute for authentication or protection against edited save files.
  * Any bank-ahead, player-ahead, missing, malformed, or unresolved evidence closes that player's banking access without
- * guessing what to replay.  This detects divergence; automatic administrative repair is not implemented.
+ * guessing what to replay.  Permission-gated recovery later records an explicit physical finding before releasing
+ * quarantine; this login path never makes that finding automatically.
  */
 
 using System;

@@ -1,0 +1,10 @@
+{
+  "code": "natural-bank-anchor",
+  "class": "FirstGearBankNaturalAnchor",
+  "entityClass": "FirstGearBankNaturalAnchorEntity",
+  "blockmaterial": "Wood",
+  "drawtype": "cube",
+  "textures": { "all": { "base": "game:block/wood/planks/pine1" } },
+  "resistance": 8,
+  "creativeinventory": {}
+}

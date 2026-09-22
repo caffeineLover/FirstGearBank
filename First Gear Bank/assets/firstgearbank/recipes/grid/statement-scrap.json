@@ -1,0 +1,10 @@
+{
+  "ingredientPattern": "S",
+  "width": 1,
+  "height": 1,
+  "shapeless": true,
+  "ingredients": {
+    "S": { "type": "item", "code": "firstgearbank:bank-statement" }
+  },
+  "output": { "type": "item", "code": "firstgearbank:statement-scrap", "quantity": 1 }
+}

@@ -3,6 +3,8 @@
  * Only hotbar and backpack storage participate; open chests, equipment, creative slots, and the mouse cursor do not.
  * Accepted denominations are explicit registered item codes, never an item's display name or a client-supplied value.
  * Rusty withdrawals use whole gears and native quarters; temporal withdrawals require whole gears.
+ * The Max query reuses the same slot capture and withdrawal planner under the same gate.  It examines the four possible
+ * rusty quarter remainders separately because insertability is not monotonic when a fractional stack needs its own slot.
  *
  * Preparation retains a server-owned gate and captures cloned before/after stacks plus serialized evidence.  Apply
  * rechecks every participating slot before changing anything, then marks changed slots dirty for engine replication.
@@ -70,20 +72,7 @@ internal sealed class InventorySettlement : IInventoryChange
         Monitor.Enter(gate);
         try
         {
-            var slots = new List<PlannedSlot>();
-            foreach (var name in new[] { GlobalConstants.hotBarInvClassName, GlobalConstants.backpackInvClassName })
-            {
-                var inventory = player.InventoryManager.GetOwnInventory(name);
-                if (inventory is null) continue;
-                if (inventory.Count > 4096) throw new BankException(BankError.InventoryUnavailable);
-                for (var index = 0; index < inventory.Count; index++)
-                {
-                    var slot = inventory[index];
-                    if (slot is null) continue;
-                    var before = slot.Itemstack?.Clone();
-                    slots.Add(new(inventory, index, slot, before, before?.Clone()));
-                }
-            }
+            var slots = Capture(player);
             if (withdrawal) PlanWithdrawal(slots, world, currency, units);
             else PlanDeposit(slots, currency, units);
             // Derive the amount from actual planned denomination differences, independently of the request.
@@ -95,6 +84,92 @@ internal sealed class InventorySettlement : IInventoryChange
         {
             Monitor.Exit(gate);
             throw;
+        }
+    }
+
+
+
+    //// Finds the largest account-bounded withdrawal that the current personal inventory can receive exactly.
+    //// The query holds the settlement gate but changes only cloned stacks.  Each possible fractional rusty remainder
+    //// gets an independent monotonic whole-gear search so lack of a quarter slot cannot hide a larger whole result.
+    ////
+    public static long MaximumWithdrawalUnits(object gate, IServerPlayer player, IWorldAccessor world,
+        Currency currency, long availableUnits)
+    {
+        if (!Enum.IsDefined(currency) || availableUnits <= 0) throw new BankException(BankError.InvalidAmount);
+        var quantum = currency == Currency.Rusty ? Money.Scale / 4 : Money.Scale;
+        availableUnits = Math.Min(Money.MaximumUnits, availableUnits / quantum * quantum);
+        if (availableUnits <= 0) throw new BankException(BankError.InvalidAmount);
+        lock (gate)
+        {
+            var captured = Capture(player);
+            var best = 0L;
+            var remainderCount = currency == Currency.Rusty ? 4 : 1;
+            for (var remainder = 0; remainder < remainderCount; remainder++)
+            {
+                var fractional = checked(remainder * quantum);
+                if (fractional > availableUnits) continue;
+                var low = 0L;
+                var high = (availableUnits - fractional) / Money.Scale;
+                while (low <= high)
+                {
+                    var middle = low + (high - low) / 2;
+                    var candidate = checked(middle * Money.Scale + fractional);
+                    if (candidate > 0 && CanPlanWithdrawal(captured, world, currency, candidate))
+                    {
+                        best = Math.Max(best, candidate);
+                        low = middle + 1;
+                    }
+                    else high = middle - 1;
+                }
+            }
+            if (best <= 0) throw new BankException(BankError.InventoryUnavailable);
+            return best;
+        }
+    }
+
+
+
+    //// Captures the only personal inventories eligible for banking while preserving stable slot order.
+    ////
+    private static List<PlannedSlot> Capture(IServerPlayer player)
+    {
+        var slots = new List<PlannedSlot>();
+        foreach (var name in new[] { GlobalConstants.hotBarInvClassName, GlobalConstants.backpackInvClassName })
+        {
+            var inventory = player.InventoryManager.GetOwnInventory(name);
+            if (inventory is null) continue;
+            if (inventory.Count > 4096) throw new BankException(BankError.InventoryUnavailable);
+            for (var index = 0; index < inventory.Count; index++)
+            {
+                var slot = inventory[index];
+                if (slot is null) continue;
+                var before = slot.Itemstack?.Clone();
+                slots.Add(new(inventory, index, slot, before, before?.Clone()));
+            }
+        }
+        return slots;
+    }
+
+
+
+    //// Applies one candidate only to fresh clones and converts ordinary capacity rejection into a false probe.
+    ////
+    private static bool CanPlanWithdrawal(List<PlannedSlot> captured, IWorldAccessor world, Currency currency, long units)
+    {
+        var probe = captured.Select(entry => entry with
+        {
+            Before = entry.Before?.Clone(),
+            After = entry.Before?.Clone()
+        }).ToList();
+        try
+        {
+            PlanWithdrawal(probe, world, currency, units);
+            return true;
+        }
+        catch (BankException error) when (error.Error == BankError.InventoryUnavailable)
+        {
+            return false;
         }
     }
 

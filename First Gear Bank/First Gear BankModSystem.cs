@@ -1,8 +1,8 @@
 /*
  * Connects Vintage Story's mod lifecycle to the world-scoped banking server adapter.
  * Server startup creates the host responsible for persistence, authentication, clocks, networking, and inventory
- * settlement.  Separate server lifecycles own Banker homes, NPC replacement, Charter premises, and exact protection.
- * Client startup creates the ledger UI; shared startup registers the custom entity, Charter block, and AI task.
+ * settlement. Separate server lifecycles own Banker homes, NPC replacement, Charter premises, natural branches, shared
+ * topology, and exact protection. Client startup creates the ledger UI; shared startup registers all custom content.
  * No money calculation, room validation, or financial state belongs in this composition root.
  *
  * LiquidityIndex is an optional trusted integration supplied before server startup.  Without one, the adapter uses
@@ -28,6 +28,8 @@ public class First_Gear_BankModSystem : ModSystem
     public BankingClient? Client { get; private set; }
     public BankerLifecycle? Bankers { get; private set; }
     public CharterLifecycle? Charters { get; private set; }
+    public NaturalBranchLifecycle? NaturalBranches { get; private set; }
+    internal BranchTopologyIndex? BranchTopology { get; private set; }
     public IExactLiquidityIndex? LiquidityIndex { get; set; }
 
 
@@ -40,6 +42,10 @@ public class First_Gear_BankModSystem : ModSystem
         api.RegisterEntity("FirstGearBankBanker", typeof(BankerEntity));
         api.RegisterBlockClass("FirstGearBankCharter", typeof(BankerCharterBlock));
         api.RegisterBlockEntityClass("FirstGearBankCharterEntity", typeof(BankerCharterBlockEntity));
+        api.RegisterItemClass("FirstGearBankPrintedStatement", typeof(PrintedStatementItem));
+        api.RegisterBlockClass("FirstGearBankNaturalAnchor", typeof(NaturalBankAnchorBlock));
+        api.RegisterBlockEntityClass("FirstGearBankNaturalAnchorEntity", typeof(NaturalBankAnchorBlockEntity));
+        api.RegisterBlockClass("FirstGearBankNaturalStrongbox", typeof(NaturalBankStrongboxBlock));
         AiTaskRegistry.Register<BankerReturnHomeTask>("firstgearbank-returnhome");
     }
 
@@ -50,8 +56,15 @@ public class First_Gear_BankModSystem : ModSystem
     public override void StartServerSide(ICoreServerAPI api)
     {
         Server = new(api, LiquidityIndex);
+        BranchTopology = new();
         Bankers = new(api, Server);
-        Charters = new(api, Server, Bankers);
+        Charters = new(api, Server, Bankers, BranchTopology);
+        NaturalBranches = new(api, Server, Bankers, BranchTopology);
+        Charters.SetNaturalBranches(NaturalBranches);
+        Bankers.SetInitialStaffingGate(branch =>
+            Charters.CanInitiallyStaff(branch) && NaturalBranches.CanInitiallyStaff(branch));
+        Bankers.SetManagedBranchProbe(branch =>
+            Charters.IsActiveBranch(branch) || NaturalBranches.IsActiveBranch(branch));
     }
 
 
@@ -70,12 +83,15 @@ public class First_Gear_BankModSystem : ModSystem
     ////
     public override void Dispose()
     {
+        NaturalBranches?.Dispose();
+        NaturalBranches = null;
         Charters?.Dispose();
         Charters = null;
         Bankers?.Dispose();
         Bankers = null;
         Server?.Dispose();
         Server = null;
+        BranchTopology = null;
         Client?.Dispose();
         Client = null;
         base.Dispose();

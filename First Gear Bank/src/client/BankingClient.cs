@@ -10,7 +10,7 @@
  * does not cancel money already sent; its response is still handled before the server conversation is released.
  *
  * A watched entity marker is merely an interaction hint set by trusted server registration.  The server independently
- * validates every Banker and session.  This file does not spawn NPCs, manage branches, print items, or implement Max.
+ * validates every Banker and session.  This file does not spawn NPCs, manage branches, or calculate Max locally.
  * Notification IDs use a bounded persisted world/player display cache; acknowledgment follows chat submission and
  * cache persistence, not proof the player read it.  Reconnecting never replays a financial operation automatically.
  */
@@ -46,6 +46,9 @@ internal sealed record TransferBankingPreview(Guid Token, string Name, long? Exa
 /// Frozen server CD quote paired with a relative display deadline, not the server's private runtime origin.
 internal sealed record CertificateBankingPreview(CdQuoteView Quote, decimal ExpiresInSeconds);
 
+/// Frozen physical-statement preview paired with its conversation-owned print token.
+internal sealed record StatementBankingPreview(Guid Token, PrintedStatementData Data);
+
 /// Bounded notice delivery with an opaque world/player cache namespace, never the recipient's internal identity.
 internal sealed record BankingNoticeDelivery(string ScopeHash, NoticeView[] Notices);
 
@@ -53,7 +56,8 @@ internal sealed record BankingNoticeDelivery(string ScopeHash, NoticeView[] Noti
 internal sealed record PendingBankingRequest(BankingRequest Request, byte[] Bytes, long SentAt);
 
 /// Locally displayed confirmation binding the subsequent intent to the server-returned values and opaque token.
-internal sealed record BankingConfirmation(BankingRequest Request, string Text, long Deadline);
+internal sealed record BankingConfirmation(BankingRequest Request, string Text, long Deadline,
+    bool UsesFinancialSequence = true);
 
 /// Client-thread controller owned by the mod system, exposing only interaction entry and deterministic disposal.
 /// Internal state is borrowed by the ledger dialog and never persisted or used to calculate financial outcomes.
@@ -163,7 +167,12 @@ public sealed class BankingClient : IDisposable
             return;
         }
         Confirmation = null;
-        Send(confirmation.Request with { Scope = Scope, Sequence = nextSequence, Limit = PageSize });
+        Send(confirmation.Request with
+        {
+            Scope = Scope,
+            Sequence = confirmation.UsesFinancialSequence ? nextSequence : --readSequence,
+            Limit = PageSize
+        });
     }
 
 
@@ -222,6 +231,7 @@ public sealed class BankingClient : IDisposable
     private void Receive(BankingPacket packet)
     {
         if (disposed || packet?.Data is not { Length: > 0 and <= 131_072 }) return;
+        // ReSharper disable once HeapView.ClosureAllocation
         var bytes = (byte[])packet.Data.Clone();
         var receivedGeneration = generation;
         api.Event.EnqueueMainThreadTask(() =>
@@ -313,6 +323,7 @@ public sealed class BankingClient : IDisposable
                 break;
             case "previewDeposit":
             case "previewWithdraw":
+            case "previewWithdrawMax":
                 var cash = reply.Body.Deserialize<PhysicalBankingPreview>(JsonOptions) ?? throw new JsonException();
                 if (cash.Action != (request.Action == "previewDeposit" ? "deposit" : "withdraw") ||
                     cash.Currency != request.Currency) throw new JsonException();
@@ -332,6 +343,15 @@ public sealed class BankingClient : IDisposable
                 var cd = reply.Body.Deserialize<CertificateBankingPreview>(JsonOptions) ?? throw new JsonException();
                 Confirmation = new(new("buyCd", Token: cd.Quote.Id), BankingDisplay.Quote(cd.Quote),
                     Deadline(cd.ExpiresInSeconds));
+                break;
+            case "previewPrintStatement":
+                var print = reply.Body.Deserialize<StatementBankingPreview>(JsonOptions) ?? throw new JsonException();
+                if (print.Token == Guid.Empty || print.Data is not { Version: 1 }) throw new JsonException();
+                Confirmation = new(new("printStatement", Token: print.Token),
+                    BankingDisplay.PrintedStatementSummary(print.Data) + "\n\n" +
+                    BankingDisplay.Text("confirm-print"), long.MaxValue, false);
+                break;
+            case "printStatement":
                 break;
             default:
                 // A committed operation invalidates the old snapshot even if a fresh display could not be generated.

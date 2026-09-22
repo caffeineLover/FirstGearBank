@@ -181,6 +181,17 @@ internal static class BankingDisplay
 
 
 
+    //// Summarizes the immutable print payload before the player approves the paper-for-statement exchange.
+    ////
+    internal static string PrintedStatementSummary(PrintedStatementData data)
+    {
+        return data.Heading + "\n" + data.BankName + "\n\n" + Text("holder", Safe(data.HolderName)) + "\n" +
+            Text("statement-balances", Exact(data.RustyUnits), Exact(data.TemporalUnits)) + "\n" +
+            Text("statement-rows", data.History.Length);
+    }
+
+
+
     //// Formats stable-ID outbox content without exposing the ID itself or inventing counterparties for summaries.
     //// The caller acknowledges only after the engine accepts this text for visible chat delivery.
     ////

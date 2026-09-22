@@ -48,7 +48,9 @@ internal sealed record ControlSection(ImmutableDictionary<string, ImmutableQueue
     ImmutableDictionary<Guid, Notice> Notices, ImmutableDictionary<string, long> Watermarks,
     ImmutableDictionary<Guid, Settlement> Settlements, ImmutableDictionary<string, FinancialInstant> Checkpoints,
     ImmutableDictionary<Guid, ScopeState> Scopes, ImmutableDictionary<Guid, CdQuote> Quotes,
-    ImmutableDictionary<Guid, TransferConfirmation> Confirmations, ImmutableDictionary<string, decimal> CooldownRemaining);
+    ImmutableDictionary<Guid, TransferConfirmation> Confirmations,
+    ImmutableDictionary<string, decimal> CooldownRemaining,
+    ImmutableList<RecoveryAuditRecord>? RecoveryAudit = null);
 
 /// Persistence portion of the world coordinator, sharing its gate and immutable published state.
 /// Framing, checksums, replay, and quarantine belong here; game save-file access belongs to the host adapter.
@@ -91,7 +93,8 @@ public sealed partial class BankingCoordinator
         var control = new ControlSection(snapshot.Responses, snapshot.Notices, snapshot.DeliveryWatermarks,
             snapshot.Settlements, snapshot.Accounts.ToImmutableDictionary(p => p.Key, p => p.Value.Checkpoint),
             snapshot.Scopes, snapshot.Quotes, snapshot.Confirmations,
-            snapshot.Cooldowns.ToImmutableDictionary(p => p.Key, p => Math.Max(0, p.Value - snapshot.Clock.RuntimeAnchor)));
+            snapshot.Cooldowns.ToImmutableDictionary(p => p.Key, p => Math.Max(0, p.Value - snapshot.Clock.RuntimeAnchor)),
+            snapshot.RecoveryAudit);
         // The damaged registry payload must survive another save even when healthy sections continue changing.
         byte[][] sections = [JsonSerializer.SerializeToUtf8Bytes(snapshot.Journal, JsonOptions),
             JsonSerializer.SerializeToUtf8Bytes(financial, JsonOptions),
@@ -184,7 +187,8 @@ public sealed partial class BankingCoordinator
                 Responses = control.Responses,
                 Notices = control.Notices,
                 DeliveryWatermarks = control.Watermarks,
-                Settlements = control.Settlements
+                Settlements = control.Settlements,
+                RecoveryAudit = control.RecoveryAudit ?? []
             };
             snapshot = Ledger.Replay(snapshot);
             snapshot = RestoreCheckpoints(snapshot, control.Checkpoints);
@@ -312,12 +316,42 @@ public sealed partial class BankingCoordinator
         foreach (var (id, settlement) in snapshot.Settlements)
             if (id != settlement.Id || id == Guid.Empty || !Enum.IsDefined(settlement.Phase) ||
                 settlement.Units <= 0 || settlement.Manifest.Deltas.IsDefaultOrEmpty ||
-                (settlement.Phase == SettlementPhase.Finalized && settlement.Operations.Any(o => !operationIds.Contains(o))))
+                (settlement.Phase == SettlementPhase.Finalized && settlement.Operations.Any(o => !operationIds.Contains(o))) ||
+                (settlement.Resolution is { } resolution && (settlement.Phase != SettlementPhase.Finalized ||
+                    !Enum.IsDefined(resolution.Finding) || string.IsNullOrWhiteSpace(resolution.Administrator) ||
+                    string.IsNullOrWhiteSpace(resolution.Reason) || string.IsNullOrWhiteSpace(resolution.UtcTimestamp) ||
+                    Encoding.UTF8.GetByteCount(resolution.Reason) > 512 ||
+                    !DateTimeOffset.TryParse(resolution.UtcTimestamp, System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.RoundtripKind, out _) ||
+                    resolution.Revision <= 0 || resolution.Revision > snapshot.Revision)))
                 throw new BankException(BankError.CorruptState);
+        foreach (var resolution in snapshot.Settlements.Values.Select(settlement => settlement.Resolution)
+                     .Where(resolution => resolution is not null))
+            ValidatePlayer(resolution!.Administrator);
         foreach (var (player, responses) in snapshot.Responses)
             if (responses.Count() > 1024 || responses.Any(r => r.Key.Player != player || r.Key.Sequence <= 0 ||
                 r.Result.Revision > snapshot.Revision || !Enum.IsDefined(r.Result.Error)))
                 throw new BankException(BankError.CorruptState);
+        if (snapshot.RecoveryAudit.Count > 4096) throw new BankException(BankError.CorruptState);
+        var auditIds = new HashSet<Guid>();
+        var lastAuditRevision = -1L;
+        foreach (var audit in snapshot.RecoveryAudit)
+        {
+            ValidatePlayer(audit.Administrator);
+            if (audit.Id == Guid.Empty || !auditIds.Add(audit.Id) || !Enum.IsDefined(audit.Action) ||
+                string.IsNullOrWhiteSpace(audit.Reason) || string.IsNullOrWhiteSpace(audit.UtcTimestamp) ||
+                Encoding.UTF8.GetByteCount(audit.Reason) > 512 ||
+                !DateTimeOffset.TryParse(audit.UtcTimestamp, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out _) ||
+                audit.PriorRevision < 0 || audit.ResultingRevision <= audit.PriorRevision ||
+                audit.ResultingRevision <= lastAuditRevision || audit.ResultingRevision > snapshot.Revision ||
+                audit.Target is null ||
+                (audit.Action == RecoveryAction.SettlementResolution &&
+                    (audit.Finding is null || !Enum.IsDefined(audit.Finding.Value))) ||
+                (audit.Action != RecoveryAction.SettlementResolution && audit.Finding is not null))
+                throw new BankException(BankError.CorruptState);
+            lastAuditRevision = audit.ResultingRevision;
+        }
     }
 
 

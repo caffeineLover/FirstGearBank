@@ -6,10 +6,11 @@
  *
  * This host implements IBankingHost using server identities, current privileges, the trusted clock, Banker sessions,
  * and retained inventory transactions.  Network requests are normalized here on the main thread and responses contain
- * only safe core views.  Administrative corrections use private short-lived scopes unavailable to ordinary packets.
+ * only safe core views. Administrative corrections/recovery use authenticated privilege checks, while statement
+ * printing and withdrawal Max reuse the same personal-inventory serialization boundary as money settlement.
  *
  * Banker content registers validated loaded entities through RegisterBanker.  This adapter does not manufacture branch
- * topology, spawn NPCs, provide a client GUI, or guess hard-crash repairs.  Those integration boundaries
+ * topology, spawn NPCs, provide a client GUI, or guess hard-crash repairs. Those integration boundaries
  * remain explicit.  Checkpoint scans preserve per-account rounding at an accepted account-count-dependent cost;
  * ordinary ticks and quotes reuse the core's held liquidity target unless financial events have become due.
  */
@@ -25,6 +26,7 @@ using System.Text.Json;
 using FirstGearBank.Core;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
+using Vintagestory.API.Config;
 using Vintagestory.API.Server;
 
 namespace FirstGearBank.Server;
@@ -36,6 +38,7 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
     private readonly ICoreServerAPI api;
     private readonly ServerDiagnostics log;
     private readonly ServerConfiguration configuration;
+    private readonly RegistryRecoveryStorage recoveryStorage;
     private readonly VintageStoryClock clock;
     private readonly BankerSessions sessions;
     private readonly BankingProtocol protocol;
@@ -63,6 +66,9 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
         (settings.CharterMinimumDays, settings.CharterMaximumDays);
     // Spacing changes affect only future branch acceptance; existing reservations are retained.
     internal int MinimumBranchSpacing => settings.MinimumBranchSpacing;
+    // Natural settings affect only sources without a persisted first disposition.
+    internal double NaturalBranchProbability => settings.NaturalBranchProbability;
+    internal bool NaturalBackfillEnabled => settings.BackfillTraders;
 
 
 
@@ -75,6 +81,7 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
         this.liquidityIndex = liquidityIndex ?? new ScanningLiquidityIndex();
         log = new(api);
         configuration = new(api.DataBasePath, log);
+        recoveryStorage = new(api.DataBasePath);
         settings = configuration.Load();
         clock = new(api);
         protocol = new(api, HandleRequest, log);
@@ -86,9 +93,9 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
         api.Event.ServerSuspend += Suspend;
         api.Event.ServerResume += Resume;
         tickListener = api.Event.RegisterGameTickListener(Tick, 1000);
-        api.ChatCommands.Create("bankadmin").WithDescription("Bank status, reload, and audited balance corrections")
+        api.ChatCommands.Create("bankadmin").WithDescription("Bank status, configuration, corrections, and recovery")
             .RequiresPrivilege(Privilege.controlserver)
-            .WithArgs(api.ChatCommands.Parsers.OptionalAll("status | reload | correct name currency amount reason"))
+            .WithArgs(api.ChatCommands.Parsers.OptionalAll("status | reload | correct | registry | settlement"))
             .HandleWith(AdminCommand);
     }
 
@@ -310,8 +317,15 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
                     case "statement":
                         body = StatementPage(player.PlayerUID, scope, request.Offset, request.Limit);
                         break;
+                    case "previewPrintStatement":
+                        body = PreviewPrintedStatement(player, scope);
+                        break;
+                    case "printStatement":
+                        body = PrintStatement(player, request);
+                        break;
                     case "previewDeposit":
                     case "previewWithdraw":
+                    case "previewWithdrawMax":
                         body = PreviewPhysical(player, request);
                         break;
                     case "names":
@@ -365,10 +379,8 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
     {
         if (!Enum.TryParse<Currency>(request.Currency, false, out var currency) || !Enum.IsDefined(currency))
             throw new BankException(BankError.InvalidCurrency);
-        var withdrawal = request.Action == "previewWithdraw";
+        var withdrawal = request.Action is "previewWithdraw" or "previewWithdrawMax";
         var precision = bank!.Snapshot().Scopes[request.Scope].DisplayPrecision;
-        var amount = Money.Parse(request.Amount ?? "", currency == Currency.Temporal ? 0 : precision);
-        if (amount.Units <= 0) throw new BankException(BankError.InvalidAmount);
         long balance = 0;
         try
         {
@@ -379,6 +391,16 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
         {
             // A preview must not create an account merely because the player has entered a prospective deposit.
         }
+        if (request.Action == "previewWithdrawMax")
+        {
+            var maximum = InventorySettlement.MaximumWithdrawalUnits(inventoryGate, player, api.World, currency, balance);
+            var resolved = new Money(maximum);
+            return new { Action = "withdraw", Currency = currency.ToString(),
+                Amount = resolved.Gears.ToString("0.######", CultureInfo.InvariantCulture),
+                ExactUnits = resolved.Units };
+        }
+        var amount = Money.Parse(request.Amount ?? "", currency == Currency.Temporal ? 0 : precision);
+        if (amount.Units <= 0) throw new BankException(BankError.InvalidAmount);
         Money.RequireBalance(new(withdrawal ? checked(balance - amount.Units) : checked(balance + amount.Units)));
         using var preview = InventorySettlement.Prepare(inventoryGate, player, api.World, currency,
             amount.Units, withdrawal);
@@ -454,6 +476,62 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
             HistoryCalendarDays = statement.History.Select(row =>
                 bank.Snapshot().Journal[checked((int)row.Sequence - 1)].WorldCalendarDays).ToArray()
         };
+    }
+
+
+
+    //// Freezes the configured bounded account projection and replaces any uncommitted preview in this conversation.
+    //// The token authorizes only printing these exact display facts; it carries no account or inventory authority.
+    ////
+    private object PreviewPrintedStatement(IServerPlayer player, Guid scope)
+    {
+        var count = bank!.Snapshot().Options.PrintedRecentTransactions;
+        var statement = bank.GetStatement(player.PlayerUID, scope, 0, Math.Max(1, count));
+        var data = new PrintedStatementData(1, Lang.Get("firstgearbank:bank-statement-heading"),
+            Lang.Get("firstgearbank:bank-statement-bank-name"), statement.HolderName,
+            (decimal)api.World.Calendar.TotalDays, statement.AsOf.Months, statement.TimeBasis.ToString(),
+            statement.RustyUnits, statement.TemporalUnits, statement.ContinuousRate, statement.MonthlyEffectiveRate,
+            statement.AnnualizedEffectiveYield,
+            statement.Totals.OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                .Select(pair => new PrintedTotalData(pair.Key, pair.Value)).ToImmutableArray(),
+            statement.Certificates.Select(certificate => new PrintedCertificateData(certificate.PrincipalUnits,
+                certificate.CurrentValueUnits, certificate.MaturityUnits, certificate.Issued.Months,
+                certificate.Matures.Months, certificate.LockedYield)).ToImmutableArray(),
+            statement.History.Take(count).Select(row => new PrintedHistoryData(row.Type, row.Currency.ToString(),
+                row.ChangeUnits, row.EffectiveTime.Months, row.Names, row.WasCapped)).ToImmutableArray(),
+            Lang.Get("firstgearbank:bank-statement-historical-notice"));
+        var prepared = sessions.PreparePrint(player.PlayerUID, scope, data);
+        return new { prepared.Token, prepared.Data };
+    }
+
+
+
+    //// Exchanges one paper for the previewed immutable statement and consumes the session allowance after Apply.
+    //// An identical retry after success returns success without repeating inventory work.
+    ////
+    private object PrintStatement(IServerPlayer player, BankingRequest request)
+    {
+        if (request.Sequence >= 0) throw new BankException(BankError.InvalidSequence);
+        var prepared = sessions.RequirePrint(player.PlayerUID, request.Scope, request.Token);
+        if (prepared.Completed) return new { Printed = true };
+        using var change = StatementPrintTransaction.Prepare(inventoryGate, player, api.World, prepared.Data);
+        try
+        {
+            change.Apply();
+            sessions.CompletePrint(player.PlayerUID, request.Scope, request.Token);
+        }
+        catch
+        {
+            try { change.Rollback(); }
+            catch
+            {
+                log.Write("WARN", "statement-printing",
+                    "Statement inventory rollback could not prove restoration; the conversation allowance remains unused.");
+            }
+            throw;
+        }
+        log.Write("INFO", "statement-printing", "Printed one statement in an authenticated Banker conversation.");
+        return new { Printed = true };
     }
 
 
@@ -601,7 +679,7 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
 
 
 
-    //// Handles permission-gated status, YAML config reload, and name-based correction chat commands.
+    //// Handles permission-gated status, YAML reload, corrections, registry recovery, and settlement findings.
     //// Console callers may inspect or reload; corrections require an authenticated player for the audit trail.
     ////
     private TextCommandResult AdminCommand(TextCommandCallingArgs args)
@@ -627,13 +705,107 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
                 return result.Error == BankError.None ? TextCommandResult.Success("Correction committed: " +
                     string.Join(", ", result.Operations)) : TextCommandResult.Error(result.Error.ToString());
             }
-            return TextCommandResult.Error("Use /bankadmin status, reload, or correct name Rusty|Temporal amount reason.");
+            if (words.Length == 2 && words[0] == "registry" && words[1] == "export")
+            {
+                if (bank is null || faulted) throw new BankException(BankError.CorruptState);
+                var name = recoveryStorage.Export(bank.ExportRegistryRecovery());
+                return TextCommandResult.Success("Registry recovery evidence exported as " + name + ".");
+            }
+            if (words.Length >= 3 && words[0] == "registry" && words[1] == "reset" &&
+                args.Caller.Player is IServerPlayer resetAdministrator)
+                return ResetRegistry(resetAdministrator, string.Join(' ', words.Skip(2)));
+            if (words.Length >= 4 && words[0] == "registry" && words[1] == "restore" &&
+                args.Caller.Player is IServerPlayer restoreAdministrator)
+                return RestoreRegistry(restoreAdministrator, words[2], string.Join(' ', words.Skip(3)));
+            if (words.Length == 5 && words[0] == "settlement" && words[1] == "resolve" &&
+                args.Caller.Player is IServerPlayer settlementAdministrator && Guid.TryParse(words[2], out var id) &&
+                Enum.TryParse<SettlementFinding>(words[3], false, out var finding) && Enum.IsDefined(finding))
+                return ResolveSettlement(settlementAdministrator, id, finding, words[4]);
+            return TextCommandResult.Error("Use /bankadmin status; reload; correct name currency amount reason; " +
+                "registry export|restore filename reason|reset reason; or settlement resolve id finding reason.");
         }
         catch (BankException error) { return TextCommandResult.Error(error.Error.ToString()); }
         catch (Exception error) when (error is FormatException or OverflowException or ArgumentException)
         {
             return TextCommandResult.Error("Invalid correction or configuration.");
         }
+    }
+
+
+
+    //// Restores one separately reviewed same-world registry snapshot and observes only current authenticated players.
+    ////
+    private TextCommandResult RestoreRegistry(IServerPlayer administrator, string filename, string reason)
+    {
+        RequireRecoveryAdministrator(administrator, reason);
+        var snapshot = recoveryStorage.ReadSnapshot(filename);
+        var result = bank!.RestoreRegistryRecovery(snapshot, RecoveryContext(administrator, reason));
+        storage?.Stage(bank);
+        sessions.CloseAll(bank);
+        foreach (var player in api.World.AllOnlinePlayers.OfType<IServerPlayer>().Where(IsAuthenticated))
+            ObservePlayer(player);
+        log.Write("INFO", "registry-recovery", $"Registry restored at bank revision {result.Revision}.");
+        return TextCommandResult.Success($"Registry restored at bank revision {result.Revision}.");
+    }
+
+
+
+    //// Exports damaged bytes before installing a new empty epoch and observing only current authenticated players.
+    ////
+    private TextCommandResult ResetRegistry(IServerPlayer administrator, string reason)
+    {
+        RequireRecoveryAdministrator(administrator, reason);
+        var evidence = recoveryStorage.Export(bank!.ExportRegistryRecovery());
+        var result = bank.ResetRegistry(RecoveryContext(administrator, reason));
+        storage?.Stage(bank);
+        sessions.CloseAll(bank);
+        foreach (var player in api.World.AllOnlinePlayers.OfType<IServerPlayer>().Where(IsAuthenticated))
+            ObservePlayer(player);
+        log.Write("INFO", "registry-recovery", $"Registry reset at bank revision {result.Revision}.");
+        return TextCommandResult.Success($"Registry reset at bank revision {result.Revision}; evidence: {evidence}.");
+    }
+
+
+
+    //// Applies an explicit settlement finding and releases live player quarantine only when receipts then agree.
+    ////
+    private TextCommandResult ResolveSettlement(IServerPlayer administrator, Guid id, SettlementFinding finding,
+        string reason)
+    {
+        RequireRecoveryAdministrator(administrator, reason);
+        var before = bank!.Snapshot();
+        if (!before.Settlements.TryGetValue(id, out var settlement))
+            throw new BankException(BankError.SettlementQuarantined);
+        var result = bank.ResolveSettlement(id, finding, RecoveryContext(administrator, reason));
+        storage?.Stage(bank);
+        sessions.Close(settlement.Request.Player, bank);
+        if (api.World.PlayerByUid(settlement.Request.Player) is IServerPlayer player && IsAuthenticated(player) &&
+            InventoryRecoveryReceipts.Matches(player, bank.Snapshot()))
+            quarantinedPlayers.Remove(settlement.Request.Player);
+        log.Write("INFO", "settlement-recovery",
+            $"Settlement {id} resolved as {finding} at bank revision {result.Revision}.");
+        return TextCommandResult.Success($"Settlement {id} resolved as {finding}; revision {result.Revision}.");
+    }
+
+
+
+    //// Rechecks live controlserver authority and bounds the mandatory audit reason before entering the core.
+    ////
+    private void RequireRecoveryAdministrator(IServerPlayer administrator, string reason)
+    {
+        if (bank is null || faulted || !IsAuthenticated(administrator) ||
+            !CanCorrectBalances(administrator.PlayerUID)) throw new BankException(BankError.PermissionDenied);
+        if (string.IsNullOrWhiteSpace(reason) || Encoding.UTF8.GetByteCount(reason) > 512)
+            throw new BankException(BankError.InvalidAmount);
+    }
+
+
+
+    //// Freezes authenticated administrator identity, visible reason, and UTC attribution for core audit persistence.
+    ////
+    private static RecoveryContext RecoveryContext(IServerPlayer administrator, string reason)
+    {
+        return new(administrator.PlayerUID, reason.Trim(), DateTimeOffset.UtcNow.ToString("O"));
     }
 
 

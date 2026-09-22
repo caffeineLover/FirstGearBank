@@ -34,6 +34,7 @@ public sealed class CharterLifecycle : IDisposable
     private readonly ICoreServerAPI api;
     private readonly FirstGearBankServer banking;
     private readonly BankerLifecycle bankers;
+    private readonly BranchTopologyIndex topology;
     private readonly ServerDiagnostics log;
     private readonly CharterPremisesValidator validator;
     private readonly Dictionary<BankerCell, BankerCharterBlockEntity> observed = new();
@@ -48,6 +49,7 @@ public sealed class CharterLifecycle : IDisposable
     private readonly HashSet<Guid> loggedStaffingFailures = new();
     private readonly Queue<BankerCell> dirty = new();
     private readonly HashSet<BankerCell> dirtySet = new();
+    private NaturalBranchLifecycle? naturalBranches;
     private readonly long tickListener;
     private Dictionary<Guid, CharterBranch> branches = new();
     private CharterRegistryStorage? storage;
@@ -63,11 +65,13 @@ public sealed class CharterLifecycle : IDisposable
 
     //// Registers bounded observation, mutation, save, and tick hooks before gameplay begins.
     ////
-    public CharterLifecycle(ICoreServerAPI api, FirstGearBankServer banking, BankerLifecycle bankers)
+    public CharterLifecycle(ICoreServerAPI api, FirstGearBankServer banking, BankerLifecycle bankers,
+        BranchTopologyIndex topology)
     {
         this.api = api;
         this.banking = banking;
         this.bankers = bankers;
+        this.topology = topology;
         log = new(api);
         validator = new(api);
         bankers.SetInitialStaffingGate(CanInitiallyStaff);
@@ -80,8 +84,17 @@ public sealed class CharterLifecycle : IDisposable
         api.Event.GameWorldSave += Save;
         tickListener = api.Event.RegisterGameTickListener(Tick, 5000);
         api.ChatCommands.Create("bankbranch").RequiresPrivilege(Privilege.controlserver)
-            .WithDescription("Emergency decommission of the Charter branch containing the administrator")
+            .WithDescription("Emergency decommission of the Charter or natural branch containing the administrator")
             .WithArgs(api.ChatCommands.Parsers.All("decommission reason")).HandleWith(AdminCommand);
+    }
+
+
+
+    //// Attaches the separately owned natural lifecycle for unified administrator decommission routing.
+    ////
+    internal void SetNaturalBranches(NaturalBranchLifecycle lifecycle)
+    {
+        naturalBranches = lifecycle;
     }
 
 
@@ -496,7 +509,7 @@ public sealed class CharterLifecycle : IDisposable
     //// Revalidates the immutable premises at the NPC roster's last safe point before an initial spawn operation.
     //// Manual homes have no active Charter row and remain allowed after Charter authority has loaded successfully.
     ////
-    private bool CanInitiallyStaff(Guid branchId)
+    internal bool CanInitiallyStaff(Guid branchId)
     {
         if (!loaded || failed || disposed) return false;
         try
@@ -533,7 +546,7 @@ public sealed class CharterLifecycle : IDisposable
 
     //// Reports whether an NPC home belongs to a currently reserving Charter for administrator-command routing.
     ////
-    private bool IsActiveBranch(Guid branchId)
+    internal bool IsActiveBranch(Guid branchId)
     {
         return loaded && activeByBranch.ContainsKey(branchId);
     }
@@ -631,23 +644,27 @@ public sealed class CharterLifecycle : IDisposable
     {
         if (!loaded || failed || disposed || args.Caller.Player is not IServerPlayer player ||
             !player.HasPrivilege(Privilege.controlserver))
-            return TextCommandResult.Error("Charter management is unavailable to this caller.");
+            return TextCommandResult.Error("Branch management is unavailable to this caller.");
         var words = ((string?)args[0] ?? string.Empty).Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
         if (words.Length != 2 || words[0] != "decommission" || string.IsNullOrWhiteSpace(words[1]) ||
             words[1].Length > 512)
             return TextCommandResult.Error("Use /bankbranch decommission reason while standing inside one branch.");
+        var reason = SafeAuditText(words[1]);
+        if (string.IsNullOrWhiteSpace(reason))
+            return TextCommandResult.Error("A visible decommission reason is required; nothing was changed.");
         var position = BankerRosterStorage.Cell(player.Entity.Pos.AsBlockPos);
         var matches = branches.Values.Where(branch => branch.Disposition == CharterDisposition.Active &&
             branch.Protected.Any(entry => entry.Cell == position)).ToArray();
-        if (matches.Length != 1)
-            return TextCommandResult.Error(matches.Length == 0 ? "No active branch contains this position." :
+        var naturalCount = naturalBranches?.CountContaining(player.Entity.Pos.AsBlockPos) ?? 0;
+        if (matches.Length == 0 && naturalCount == 1 && naturalBranches is not null)
+            return naturalBranches.TryDecommission(player, reason);
+        if (matches.Length + naturalCount != 1)
+            return TextCommandResult.Error(matches.Length + naturalCount == 0 ?
+                "No active branch contains this position." :
                 "The branch at this position is ambiguous; nothing was changed.");
         try
         {
             var branch = matches[0];
-            var reason = SafeAuditText(words[1]);
-            if (string.IsNullOrWhiteSpace(reason))
-                return TextCommandResult.Error("A visible decommission reason is required; nothing was changed.");
             var identity = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(player.PlayerUID)))[..16];
             Retire(branch, true, "Administrative decommission: " + reason);
             log.Write("WARN", "charter-administration", "Decommissioned Charter branch; admin=" +
@@ -719,17 +736,14 @@ public sealed class CharterLifecycle : IDisposable
     private bool Conflicts(BlockPos anchor, CharterCapture capture)
     {
         var cells = capture.Protected.Select(entry => entry.Cell).ToHashSet();
-        var radius = banking.MinimumBranchSpacing;
         foreach (var placement in activePlacements)
         {
             var branch = branches[placement];
             if (branch.Protected.Any(entry => cells.Contains(entry.Cell))) return true;
-            if (branch.Anchor.Dimension != anchor.dimension || radius == 0) continue;
-            var dx = (long)branch.Anchor.X - anchor.X;
-            var dz = (long)branch.Anchor.Z - anchor.Z;
-            if ((decimal)dx * dx + (decimal)dz * dz < (decimal)radius * radius) return true;
         }
-        return false;
+        var candidate = new BranchBounds(anchor.dimension, cells.Min(cell => cell.X), cells.Min(cell => cell.Y),
+            cells.Min(cell => cell.Z), cells.Max(cell => cell.X), cells.Max(cell => cell.Y), cells.Max(cell => cell.Z));
+        return topology.Conflicts(candidate, banking.MinimumBranchSpacing);
     }
 
 
@@ -852,6 +866,15 @@ public sealed class CharterLifecycle : IDisposable
     private void Stage()
     {
         storage!.Stage(branches.Values);
+        topology.Replace(BranchKind.Charter, branches.Values.Where(branch =>
+            branch.Disposition == CharterDisposition.Active).Select(branch =>
+        {
+            var cells = branch.Protected.Select(entry => entry.Cell).ToArray();
+            return new BranchFootprint(branch.Branch, BranchKind.Charter,
+                new(branch.Anchor.Dimension, cells.Min(cell => cell.X), cells.Min(cell => cell.Y),
+                    cells.Min(cell => cell.Z), cells.Max(cell => cell.X), cells.Max(cell => cell.Y),
+                    cells.Max(cell => cell.Z)), true);
+        }));
     }
 
 

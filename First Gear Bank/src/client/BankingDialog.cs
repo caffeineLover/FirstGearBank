@@ -9,7 +9,7 @@
  * so double clicks cannot queue multiple financial commands.  Rebuilds are deferred by the controller until engine
  * input iteration ends, preserving typed form values across transport updates.  Closing only relinquishes UI interest.
  *
- * Banker spawning, native entity dialogue assets, physical Max, printing, and branch management remain content/server
+ * Banker spawning, native entity dialogue assets, printing, and branch management remain content/server
  * responsibilities.  This ledger supplies localized Banker framing and screens through the registered interaction hook.
  */
 
@@ -103,7 +103,12 @@ internal sealed class BankingDialog : GuiDialog
             };
             ScrollText(composer, text, 143, 280);
             if (page is "history" or "totals") PageButtons(composer, 437);
-            else Button(composer, "refresh", 0, 437, RefreshStatement, 160);
+            else
+            {
+                Button(composer, "refresh", 0, 437, RefreshStatement, 160);
+                Button(composer, "print", 175, 437,
+                    () => client.Read(new("previewPrintStatement")), 160);
+            }
         }
         Button(composer, "retry", 475, 478, client.Retry, 104, true);
         Button(composer, "close", 585, 478, CloseWindow, 104, true);
@@ -197,7 +202,7 @@ internal sealed class BankingDialog : GuiDialog
 
 
     //// Collects decimal cash intent and asks the server to preflight the complete deposit or withdrawal for review.
-    //// There is deliberately no client-side Max estimate or local inventory-count authority.
+    //// Max is a separate server query; the client never estimates account balance or inventory capacity.
     ////
     private void CashForm(GuiComposer composer)
     {
@@ -210,6 +215,9 @@ internal sealed class BankingDialog : GuiDialog
         Label(composer, BankingDisplay.Text("amount"), 0, 289, 160, 25);
         Input(composer, "amount", amount, 160, 282, 290, 32, value => amount = value);
         Button(composer, "review", 0, 345, () => client.Read(new(cashAction, Amount: amount, Currency: currency)), 180);
+        if (cashAction == "previewWithdraw")
+            Button(composer, "max", 195, 345,
+                () => client.Read(new("previewWithdrawMax", Currency: currency)), 180);
     }
 
 

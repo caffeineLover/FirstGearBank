@@ -23,7 +23,8 @@ namespace FirstGearBank.Server;
 internal sealed record BankerRegistration(Guid Branch, Entity Entity, Func<bool> Available);
 
 /// Short-lived conversation authority owned by the server, with a real-second idle deadline and captured connection.
-internal sealed record BankerConversation(IServerPlayer Player, long EntityId, Guid Scope, decimal ExpiresAtSeconds);
+internal sealed record BankerConversation(IServerPlayer Player, long EntityId, Guid Scope, decimal ExpiresAtSeconds,
+    StatementPrintState? Print);
 
 /// Server-thread access registry shared by request dispatch and the core's execution-time session validation callback.
 /// Entries never persist across restarts; reconnecting players must obtain fresh conversation scopes.
@@ -81,8 +82,46 @@ internal sealed class BankerSessions
         if (!CanUse(player, entityId)) throw new BankException(BankError.InvalidSession);
         Close(player.PlayerUID, bank);
         var scope = bank.OpenConversation(player.PlayerUID);
-        conversations[player.PlayerUID] = new(player, entityId, scope, now + 300);
+        conversations[player.PlayerUID] = new(player, entityId, scope, now + 300, null);
         return scope;
+    }
+
+
+
+    //// Replaces any uncommitted print preview with a fresh token while preserving a consumed conversation allowance.
+    //// The host supplies already-frozen player-safe data after its ordinary account and session checks.
+    ////
+    public StatementPrintState PreparePrint(string player, Guid scope, PrintedStatementData data)
+    {
+        if (!conversations.TryGetValue(player, out var conversation) || conversation.Scope != scope)
+            throw new BankException(BankError.InvalidSession);
+        if (conversation.Print?.Completed == true) throw new BankException(BankError.PrintAllowanceUsed);
+        var prepared = new StatementPrintState(Guid.NewGuid(), data, false);
+        conversations[player] = conversation with { Print = prepared };
+        return prepared;
+    }
+
+
+
+    //// Returns the exact frozen preview owned by this conversation and token, including completed replay state.
+    ////
+    public StatementPrintState RequirePrint(string player, Guid scope, Guid token)
+    {
+        if (!conversations.TryGetValue(player, out var conversation) || conversation.Scope != scope ||
+            conversation.Print is not { } print || print.Token != token)
+            throw new BankException(BankError.ExpiredConfirmation);
+        return print;
+    }
+
+
+
+    //// Consumes the conversation allowance only after the complete paper/output inventory exchange succeeds.
+    ////
+    public void CompletePrint(string player, Guid scope, Guid token)
+    {
+        var print = RequirePrint(player, scope, token);
+        var conversation = conversations[player];
+        conversations[player] = conversation with { Print = print with { Completed = true } };
     }
 
 
@@ -125,6 +164,15 @@ internal sealed class BankerSessions
             bank.CloseConversation(entry.Scope);
             closed(entry.Player, entry.Scope);
         }
+    }
+
+
+
+    //// Closes every ephemeral conversation after world-level recovery invalidates all core scopes and tokens.
+    ////
+    public void CloseAll(BankingCoordinator bank)
+    {
+        foreach (var player in conversations.Keys.ToArray()) Close(player, bank);
     }
 
 

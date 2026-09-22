@@ -24,7 +24,8 @@ There is no test suite, per the user's instruction.  Build success is not gamepl
 
 The core contains six-decimal money, financial clocks, deterministic CIR/Constant rates, monthly market history,
 lazy savings/vault accrual, an immutable double-entry journal, serialized requests, name-based transfers,
-administrative corrections, CD quotes/contracts/maturities, notification state, statements, and framed persistence.
+administrative corrections and recovery audit, CD quotes/contracts/maturities, notification state, statements, and
+framed persistence.
 
 `InterestRates.cs` defines the interest-rate models, their economic settings, monthly history, and CD yield calculations.
 `FinanceEngine.cs` applies those stored rates to account accrual and coordinates financial boundaries and CD maturities.
@@ -54,6 +55,10 @@ financial-month and funding-changing checkpoints; no opt-in or custom index is r
 Administrators with `controlserver` can use `/bankadmin status`, `/bankadmin reload`, and
 `/bankadmin correct name Rusty|Temporal signedAmount reason`.  Corrections require an authenticated player and an
 existing target account.  Trusted server integrations can also call `CorrectBalance` with a related correction ID.
+Registry recovery commands are `registry export`, `registry restore filename reason`, and `registry reset reason`;
+artifacts are kept beneath the server data directory at `ModData/FirstGearBank/registry-recovery`. A reset exports the
+quarantined bytes before creating a new empty name epoch. Ambiguous physical settlements require the explicit command
+`/bankadmin settlement resolve id InventoryApplied|InventoryNotApplied reason`; neither outcome is inferred from money.
 Config Lib remains optional.  When present, it discovers the bundled settings definition and edits the same YAML file;
 after saving either there or in a text editor, use `/bankadmin reload` to apply the settings.
 
@@ -86,7 +91,8 @@ The original placer can sneak-right-click the Charter to remove and collect it; 
 Removal immediately releases topology and spacing.  An assigned Banker remains available only until the saved displayed
 17:00 cutoff; an unstaffed arrival is cancelled.  A replacement plaque creates a new branch and wait.
 Administrators with `controlserver` may stand inside one accepted branch and use `/bankbranch decommission reason` to
-release it immediately while leaving blocks and all finance unchanged.  Compatible furnishing blocks may opt in with
+release it immediately while leaving blocks and all finance unchanged. The same command handles natural branches and
+removes only the matching mod-owned claim and Banker home. Compatible furnishing blocks may opt in with
 the boolean attributes `firstgearbankTable`, `firstgearbankSeat`, `firstgearbankArtificialLight`, or
 `firstgearbankFurniture` (floor-footprint occupancy only); unsupported custom multi-position mutation behavior cannot
 be protected through public APIs.
@@ -101,17 +107,32 @@ Session expiry, removal, or branch cutoff sends a scoped close notification to i
 The native quarter item and four-quarters-to-one-whole recipe are included; the quarter currently reuses vanilla gear art.
 Unverified external quarter integrations are not accepted or selected automatically.
 
+Natural branches use vanilla generated-trader structure metadata, never trader entities. On first observation each
+supported vanilla trader location receives one deterministic, persisted probability result. A selected source searches
+stable 7×7 candidates 20–50 blocks from the trader bounds without force-loading terrain; definite rejections advance a
+persisted cursor, while unavailable candidate data waits for an ordinary visit. The chosen schematic includes a door,
+light, table, chair, potted flower, decorative locked non-inventory strongbox, hidden reconciliation anchor, public-use
+and public-traverse protection, and an immediately established Banker home. It contains no Charter. Configuration
+defaults to probability `0.15` and existing-world backfill `false`; reload affects only sources not yet evaluated.
+Backfill, when enabled, observes only loaded columns newly entered by online players. Reservations share Charter spacing,
+do not reroll, and retain blocks and accounts after decommissioning.
+
 The `firstgearbank-v1` channel registers `BankingPacket`, carrying UTF-8 JSON with PascalCase fields.  Requests contain
 `Action`, `Scope`, `Sequence`, and action-specific intent fields; they never carry an account UID.  Supported actions are
-`open`, `close`, `statement`, `names`, `previewDeposit`, `previewWithdraw`, `confirmTransfer`, `quoteCd`,
+`open`, `close`, `statement`, `names`, `previewDeposit`, `previewWithdraw`, `previewWithdrawMax`,
+`previewPrintStatement`, `printStatement`, `confirmTransfer`, `quoteCd`,
 `deposit`, `withdraw`, `transfer`, `buyCd`, and
 `acknowledge`.  Recognized monetary mutations use the core's sequenced retry contract.  Incoming JSON is limited to four
-KiB, pages to fifty entries, and queued requests to four per connection and 256 globally.  Physical Max controls,
-printing, natural-branch generation, and registry repair administration remain unfinished; this is not yet a playable
-full-spec release.
+KiB, pages to fifty entries, and queued requests to four per connection and 256 globally. Withdrawal Max is resolved by
+the server against both the exact account balance and current personal-inventory capacity; it never trusts a client-side
+estimate.
 
 The client ledger contains account, cash, transfer, CD, history, and cumulative-total screens with localized Banker
 framing.  Every money operation has a server-resolved confirmation; cash previews do not reserve funds or inventory.
+The account screen can print one immutable, nonstacking bearer-readable statement per Banker conversation by exchanging
+one parchment for a frozen snapshot. A statement includes exact balances, configured recent history, cumulative totals,
+CDs, rates, issue time, and a historical-data warning. Crafting removes its private payload into generic statement scrap;
+statements and scraps burn, and sixteen scraps seal into one compost after 480 hours.
 Known-name discovery follows the server mode.  Quotes show exact payoff and all pricing components, and active CDs
 distinguish nonspendable value, financial duration, and projected calendar maturity from runtime-based maturity.
 Read requests use negative correlation sequences; mutations use positive core sequences.  Only one request is pending
@@ -122,12 +143,14 @@ persistence.  A bounded cache retains 2,048 notice IDs per opaque world/player n
 `<game data>/Cache/firstgearbank`; it stores no names, UIDs, message contents, or balances.  A crash between display
 and cache persistence can still repeat a notice; this is not a guarantee of exactly-once visible delivery.
 
-The client, Banker NPC, and Charter branch flow have been Release-build/source checked, not verified in a running game.
-NPC and Charter save staging is not an atomic disk transaction with entity saves, and quarantined homes require
-explicit future recovery support.
+The newly completed Max, printed-statement, recovery-administration, and natural-branch paths have not been built or run
+as part of this implementation pass. NPC, branch, claim, inventory, and financial save staging are not one atomic disk
+transaction. Durable phase records and explicit recovery commands handle recognized ambiguity conservatively, but an
+administrator must inspect evidence and choose a settlement finding; the mod never guesses.
 
 Server-only receipts are co-serialized with 1.22.7 personal inventories and checked against successful bank settlement
 tombstones on login.  Missing or divergent evidence and pending settlements quarantine that player's banking access.
-This is conservative detection, not automatic hard-crash repair; no item or money replay is guessed.  The library and
+This is conservative detection, not automatic hard-crash repair; no item or money replay is guessed. Quarantined
+settlements retain their manifest and frozen planned records for the authenticated recovery command. The library and
 adapter do not promise atomic disk writes across game inventory and world-save blobs.
 Player-facing responses use names; `Snapshot`, journal records, and persisted sections are privileged server-only data.
