@@ -1,102 +1,32 @@
 # Common Coding Standards
 
 ## Code Quality
-- Prefer clear, maintainable code over cleverness; avoid unnecessary abstractions.
-- Keep responsibilities focused, control flow explicit, and side effects visible.
-- Preserve existing behavior unless the task explicitly requests a change.
-- Keep changes focused; avoid unrelated cleanup or reformatting.
-- Use the project's configured formatter, linter, analyzer, compiler, and test tools.
+- Prefer simple, readable code over unnecessary abstraction.
+- Preserve existing behavior and avoid unrelated changes, cleanup, or reformatting.
 
-## Understand Before Implementing
-Before adding features or changing behavior:
+## Before Implementing
+- Inspect the relevant code before changing it.
+- Ask only when a material ambiguity or missing decision prevents a safe implementation.
+- If new information materially changes the requested design, stop and ask before proceeding.
 
-1. Inspect relevant code, documentation, configuration, and recent history.  Ask about material gaps or ambiguities;
-    do not invent requirements.
-2. Explain what will change, how it will work, and why.  For nontrivial work, compare alternatives and justify your recommendation.
-3. Wait for the user's explicit design approval.
-4. Create a separate implementation plan covering components, ordered steps, risks, and validation. Only then code.
-
-- Scale detail to the task.
-- If discoveries invalidate approved assumptions or materially change the design, pause, explain, and obtain approval
-   for the revision before continuing.
-
-## Systematic Debugging
-- Investigate the root cause rather than patching symptoms.
-- Test one hypothesis at a time; undo your unsuccessful experimental changes rather than stacking speculative fixes.
-- Verify the fix and check for regressions.  Add a regression test when practical and won't use too many tokens.
-- Report anything you could not reproduce or verify.
-
-
----
+## Debugging
+- Find and fix the root cause, not just the symptom.
+- Remove unsuccessful speculative changes, verify the fix when practical, and say clearly what could not be verified.
 
 ## Configuration
+- Use the existing configuration format; otherwise prefer YAML.
+- Do not migrate formats without approval.
+- Validate values enough to prevent crashes or clearly invalid behavior, and avoid unnecessary options.
 
-- Put user/operator-adjustable behavior in configuration; keep invariants, security guarantees, and implementation constants in code.
-- Follow the existing format; otherwise prefer YAML. Do not migrate formats without approval.
-- Centralize and document defaults, fields, units, allowed values, and important interactions.
-- Validate required fields, types, ranges, and combinations. Reject invalid explicit values with clear, field-specific errors.
-- Parse safely; never deserialize arbitrary executable types.
-- Preserve backward compatibility or provide a deliberate migration path when schemas change.
-- Avoid unnecessary options; each adds documentation, testing, and compatibility obligations.
-- 
+## Human-Readable Source Documentation
+- Document non-obvious purpose, reasoning, constraints, and important behavior.
+- Do not narrate self-explanatory code or add documentation merely for completeness.
+- Explain the function’s purpose and role clearly, without repeating the implementation or becoming verbose.
+- Update affected documentation when behavior changes.
+- In source documentation, use two spaces after a sentence-ending period when another sentence follows on the same line.
+- Keep documentation lines at 120 characters or fewer.
 
-
----
-
-# 5. Human-Readable Source Documentation
-
-Use the documentation syntax required by the applicable language profile.  Document relevant:
-
-- Purpose, responsibility, and larger feature context
-- Callers, callees, services, APIs, and architectural relationships
-- State changes, side effects, ownership, lifetime, and persistence
-- Assumptions, invariants, validation, and authority boundaries
-- Domain rules, constraints, workarounds, and API limitations
-- Reasons for unusual algorithms, ordering, filtering, or performance decisions
-- Failure behavior and responsibilities deliberately left elsewhere
-
-Explain meaning and reasoning rather than restating names, signatures, types, assignments, or visible syntax.  Do not add
-fluff or narrate individual statements.
-
-Human-readable explanatory prose stored with source code must use exactly two spaces after a period that ends a sentence
-when another sentence follows on the same physical line.  This includes comments, docstrings, XML documentation, Doxygen
-documentation, and module or procedure headers.  Do not add trailing spaces when the next sentence starts on a new line.
-This rule does not alter user-facing strings, serialized data, protocol text, or generated output.
-
-Documentation lines must not exceed 120 characters, including indentation and comment markers.  If the next word would
-cross that limit, move it to the next documentation line.  The two spaces between sentences count toward the limit.
-
-Whenever behavior changes, review all related documentation and update or remove every affected claim in the same change.
-Never preserve documentation merely because it already exists.
-
----
-
-# 6. Logging
-
-Every project must route runtime logs to files under a `logs/` directory at the project or application runtime root.  Create
-the directory when it does not exist.  Applications may additionally emit logs to the console, operating system, or another
-configured sink, but those destinations do not replace the required files under `logs/`.
-
-Reusable libraries must emit through a caller-provided or project-standard logging abstraction so the host application can
-route their records into `logs/`.  Libraries must not silently create unrelated log destinations.
-
-Every emitted record must use one of these exact, case-sensitive severity labels:
-
-- `INFO`: Normal lifecycle events and significant successful operations
-- `DEBG`: Diagnostic detail used to understand execution and troubleshoot behavior
-- `WARN`: Unexpected or degraded behavior from which the operation can recover
-- `CRIT`: A failure that prevents a required operation, threatens data integrity, or requires immediate attention
-
-Use `DEBG`, not `DEBUG`, and `CRIT`, not `ERROR`, `FATAL`, or `CRITICAL`, in formatted log output.  Map native framework
-levels to these four labels when necessary.
-
-Each record must include a timestamp, severity, component or source, and message.  Include relevant identifiers and exception
-details when they help diagnose the event.  Never log credentials, secrets, tokens, or sensitive data.  Keep generated log
-files out of version control and configure rotation or retention appropriate to the project.
-
----
-
-# 7. Completion
-
-Before considering a change complete, run the relevant formatter, static checks, build or compile step, and tests available
-in the project.  Report checks that could not be run and the reason.
+## Logging
+- When logging applies, use the project's existing facilities and conventions rather than creating a parallel system.
+- Log useful diagnostic context without excessive noise, and never log credentials, secrets, or sensitive data.
+- Reusable libraries should use the host application's logging abstraction when available.
