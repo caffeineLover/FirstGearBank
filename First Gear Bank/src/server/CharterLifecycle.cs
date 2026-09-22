@@ -65,7 +65,7 @@ public sealed class CharterLifecycle : IDisposable
 
     //// Registers bounded observation, mutation, save, and tick hooks before gameplay begins.
     ////
-    public CharterLifecycle(ICoreServerAPI api, FirstGearBankServer banking, BankerLifecycle bankers,
+    internal CharterLifecycle(ICoreServerAPI api, FirstGearBankServer banking, BankerLifecycle bankers,
         BranchTopologyIndex topology)
     {
         this.api = api;
@@ -345,10 +345,11 @@ public sealed class CharterLifecycle : IDisposable
         var candidate = player.InventoryManager.ActiveHotbarSlot?.Itemstack?.Block;
         if (candidate is null || selection.HitPosition is null || selection.Face is null ||
             !api.World.BlockAccessor.GetBlock(selection.Position).IsReplacableBy(candidate)) return false;
-        var touched = false;
+        var touched = new bool[1];
         if (candidate.GetBehavior<BlockBehaviorMultiblock>() is { } multiblock)
-            multiblock.IterateOverEach(selection.Position, part => !(touched |= ProtectionAt(part) is not null));
-        if (!touched && candidate.GetBehavior<BlockBehaviorDoor>() is { } door)
+            multiblock.IterateOverEach(selection.Position,
+                part => !(touched[0] |= ProtectionAt(part) is not null));
+        if (!touched[0] && candidate.GetBehavior<BlockBehaviorDoor>() is { } door)
         {
             // Mirror the native paired-door origin and handle calculation before evaluating its complete footprint.
             var origin = selection.Position.Copy();
@@ -362,11 +363,11 @@ public sealed class CharterLifecycle : IDisposable
             {
                 if (door.width > 1 && offset != 0) origin.Add(facing.GetCW(), offset);
             }
-            if (paired is not null && ProtectionAt(paired.Pos) is not null) touched = true;
+            if (paired is not null && ProtectionAt(paired.Pos) is not null) touched[0] = true;
             door.IterateOverEach(origin, rotation, inverted,
-                part => !(touched |= ProtectionAt(part) is not null));
+                part => !(touched[0] |= ProtectionAt(part) is not null));
         }
-        return touched;
+        return touched[0];
     }
 
 
@@ -429,8 +430,8 @@ public sealed class CharterLifecycle : IDisposable
             else RefreshPending(existing, charter);
             return;
         }
-        var placer = api.World.PlayerByUid(placerUid);
-        if (placer is null)
+        if (api.World.PlayerByUid(placerUid) is not IServerPlayer
+            { ConnectionState: EnumClientState.Playing } placer)
         {
             charter.SetStatus("charter-status-checking");
             return;

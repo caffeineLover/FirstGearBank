@@ -52,6 +52,7 @@ public sealed partial class BankingCoordinator
     {
         lock (gate)
         {
+            RequireFinance();
             ValidateRecoveryContext(context);
             if (!state.RegistryQuarantined || recovery.Version != 1 || recovery.WorldId != state.WorldId ||
                 recovery.Names is null ||
@@ -87,6 +88,7 @@ public sealed partial class BankingCoordinator
     {
         lock (gate)
         {
+            RequireFinance();
             ValidateRecoveryContext(context);
             if (!state.RegistryQuarantined || quarantinedRegistry.IsEmpty)
                 throw new BankException(BankError.RecipientServiceUnavailable);

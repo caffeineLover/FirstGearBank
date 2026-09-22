@@ -114,7 +114,7 @@ internal sealed class NaturalBranchSiteSelector
 
 
 
-    //// Chooses the base schematic rotation whose south-wall door faces the nearest source-bound direction.
+    //// Chooses the base schematic rotation whose north-wall door faces the nearest source-bound direction.
     ////
     private static int FacingRotation(int centerX, int centerZ, BranchBounds source)
     {
@@ -122,7 +122,7 @@ internal sealed class NaturalBranchSiteSelector
         var targetZ = Math.Clamp(centerZ, source.MinZ, source.MaxZ);
         var dx = targetX - centerX;
         var dz = targetZ - centerZ;
-        return Math.Abs(dx) > Math.Abs(dz) ? dx < 0 ? 1 : 3 : dz < 0 ? 0 : 2;
+        return Math.Abs(dx) > Math.Abs(dz) ? dx < 0 ? 3 : 1 : dz < 0 ? 0 : 2;
     }
 
 

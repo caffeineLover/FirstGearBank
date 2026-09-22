@@ -33,7 +33,7 @@ public sealed class BankerCharterBlock : BlockSign
     public override bool TryPlaceBlock(IWorldAccessor world, IPlayer byPlayer, ItemStack itemstack,
         BlockSelection blockSelection, ref string failureCode)
     {
-        if (!blockSelection.Face.IsHorizontal)
+        if (blockSelection.Face?.IsHorizontal != true)
         {
             failureCode = "requireswall";
             return false;

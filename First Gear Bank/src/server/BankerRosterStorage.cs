@@ -124,25 +124,40 @@ internal sealed class BankerRosterStorage
     //// Rejects malformed home geometry and timer/assignment combinations instead of inventing replacement authority.
     //// Interior cells are a caller-validated region, not evidence that a Charter or claim exists.
     ////
-    internal static void Validate(BankerHome home)
+    internal static void Validate(BankerHome? home)
     {
-        if (home is null || home.Anchor is null || home.Standing is null || home.Branch == Guid.Empty || home.Interior.IsDefaultOrEmpty ||
+        if (home is null) throw new JsonException();
+        var anchor = RequiredCell(home.Anchor);
+        var standing = RequiredCell(home.Standing);
+        if (home.Branch == Guid.Empty || home.Interior.IsDefaultOrEmpty ||
             home.Interior.Length > 4096 || home.Generation < 0 || home.EntityId < 0 ||
             !Enum.IsDefined(home.Disposition) || !double.IsFinite(home.SampledDays) || home.SampledDays < 0 ||
             !double.IsFinite(home.RemainingDays) || home.RemainingDays < 0 || home.RemainingDays > home.SampledDays ||
             !double.IsFinite(home.LastCalendarDay) || home.LastCalendarDay < 0 ||
             home.DepartureDay is { } departure && (!double.IsFinite(departure) || departure < 0))
             throw new JsonException();
-        foreach (var cell in home.Interior.Append(home.Anchor).Append(home.Standing))
-            if (cell is null || cell.Dimension != home.Anchor.Dimension || cell.Dimension is < 0 or > 65534 ||
-                cell.Y is < 1 or > 32765 || Math.Abs((long)cell.X - home.Anchor.X) > 128 ||
-                Math.Abs((long)cell.Z - home.Anchor.Z) > 128 || Math.Abs((long)cell.Y - home.Anchor.Y) > 128)
+        foreach (var value in home.Interior.Append(anchor).Append(standing))
+        {
+            var cell = RequiredCell(value);
+            if (cell.Dimension != anchor.Dimension || cell.Dimension is < 0 or > 65534 ||
+                cell.Y is < 1 or > 32765 || Math.Abs((long)cell.X - anchor.X) > 128 ||
+                Math.Abs((long)cell.Z - anchor.Z) > 128 || Math.Abs((long)cell.Y - anchor.Y) > 128)
                 throw new JsonException();
-        if (!home.Interior.Contains(home.Standing) || home.Interior.Distinct().Count() != home.Interior.Length ||
+        }
+        if (!home.Interior.Contains(standing) || home.Interior.Distinct().Count() != home.Interior.Length ||
             home.Disposition is BankerDisposition.Assigned or BankerDisposition.Waiting &&
                 (home.EntityId == 0 || home.SpawnId == Guid.Empty) ||
             home.Disposition == BankerDisposition.Reserved && (home.EntityId != 0 || home.SpawnId == Guid.Empty))
             throw new JsonException();
+    }
+
+
+
+    //// Converts nullable deserialization input into a validated cell before geometry code may dereference it.
+    ////
+    private static BankerCell RequiredCell(BankerCell? cell)
+    {
+        return cell ?? throw new JsonException();
     }
 
 

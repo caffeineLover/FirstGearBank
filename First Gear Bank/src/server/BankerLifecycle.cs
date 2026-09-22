@@ -446,7 +446,7 @@ public sealed class BankerLifecycle : IDisposable
             if (!safe.IsEmpty)
             {
                 var preferred = PreferredStanding(safe, home.Anchor);
-                if (preferred != home.Standing) homes[home.Branch] = home = home with { Standing = preferred };
+                if (preferred != home.Standing) homes[home.Branch] = home with { Standing = preferred };
                 target = BankerRosterStorage.Center(preferred);
                 return true;
             }

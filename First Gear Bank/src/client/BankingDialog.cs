@@ -16,7 +16,6 @@
 using System;
 using System.Globalization;
 using System.Linq;
-using FirstGearBank.Server;
 using Vintagestory.API.Client;
 using Vintagestory.API.Config;
 

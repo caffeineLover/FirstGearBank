@@ -126,7 +126,7 @@ internal sealed class NaturalBranchStorage
 
     //// Rejects impossible disposition, geometry, probability, rotation, and placement-phase combinations.
     ////
-    private void Validate(NaturalBranchSource source)
+    private void Validate(NaturalBranchSource? source)
     {
         if (source is null || string.IsNullOrWhiteSpace(source.Id) || source.Id.Length != 64 ||
             string.IsNullOrWhiteSpace(source.StructureCode) || source.StructureCode.Length > 256 ||
@@ -151,8 +151,9 @@ internal sealed class NaturalBranchStorage
                     source.Disposition == NaturalSourceDisposition.NotSelected && source.SearchCursor != 0))
             throw new JsonException();
         var structure = new NaturalStructureSource(source.Id, source.StructureCode, source.StructureBounds);
+        var expectedRoll = NaturalBranchIdentity.Roll(save.Seed, source.Id);
         if (source.Id != NaturalBranchIdentity.SourceId(save.SavegameIdentifier, structure) ||
-            source.Roll != NaturalBranchIdentity.Roll(save.Seed, source.Id) ||
+            BitConverter.DoubleToInt64Bits(source.Roll) != BitConverter.DoubleToInt64Bits(expectedRoll) ||
             (source.Disposition == NaturalSourceDisposition.NotSelected) != (source.Roll >= source.Probability) ||
             (source.Branch != Guid.Empty &&
                 source.Branch != NaturalBranchIdentity.Branch(save.SavegameIdentifier, source.Id)))
@@ -171,7 +172,8 @@ internal sealed class NaturalBranchStorage
             bounds.MaxX is >= -coordinateLimit and <= coordinateLimit &&
             bounds.MinZ is >= -coordinateLimit and <= coordinateLimit &&
             bounds.MaxZ is >= -coordinateLimit and <= coordinateLimit && bounds.MinY is >= 0 and <= 32767 &&
-            bounds.MaxY is >= bounds.MinY and <= 32767 && bounds.MaxX >= bounds.MinX && bounds.MaxZ >= bounds.MinZ;
+            bounds.MaxY <= 32767 && bounds.MaxY >= bounds.MinY && bounds.MaxX >= bounds.MinX &&
+            bounds.MaxZ >= bounds.MinZ;
     }
 
 

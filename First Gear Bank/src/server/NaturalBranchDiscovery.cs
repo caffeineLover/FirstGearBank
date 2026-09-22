@@ -38,7 +38,7 @@ internal sealed class NaturalBranchDiscovery : IDisposable
     {
         this.api = api;
         this.lifecycle = lifecycle;
-        api.Event.ChunkColumnGeneration(Worldgen, EnumWorldGenPass.Done, "standard");
+        api.Event.ChunkColumnGeneration(Worldgen, EnumWorldGenPass.PreDone, "standard");
         backfillTick = api.Event.RegisterGameTickListener(Backfill, 2000);
     }
 
@@ -66,6 +66,7 @@ internal sealed class NaturalBranchDiscovery : IDisposable
         var present = new HashSet<string>(StringComparer.Ordinal);
         foreach (var player in api.World.AllOnlinePlayers.OfType<IServerPlayer>())
         {
+            if (player.ConnectionState != EnumClientState.Playing) continue;
             present.Add(player.PlayerUID);
             var pos = player.Entity.Pos.AsBlockPos;
             if (pos.dimension != 0) { visited.Remove(player.PlayerUID); continue; }

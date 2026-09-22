@@ -42,7 +42,7 @@ public sealed class NaturalBranchLifecycle : IDisposable
 
     //// Registers discovery before terrain generation and defers durable authority loading until RunGame.
     ////
-    public NaturalBranchLifecycle(ICoreServerAPI api, FirstGearBankServer banking, BankerLifecycle bankers,
+    internal NaturalBranchLifecycle(ICoreServerAPI api, FirstGearBankServer banking, BankerLifecycle bankers,
         BranchTopologyIndex topology)
     {
         this.api = api;
@@ -210,7 +210,8 @@ public sealed class NaturalBranchLifecycle : IDisposable
     ////
     private void Reconcile(NaturalBranchSource row)
     {
-        if (row.BranchBounds is null || row.Anchor is null) { Quarantine(row, "missing reservation geometry"); return; }
+        var bounds = row.BranchBounds;
+        if (bounds is null || row.Anchor is null) { Quarantine(row, "missing reservation geometry"); return; }
         var center = BankerRosterStorage.Position(row.Anchor);
         if (!api.World.IsFullyLoadedChunk(center)) return;
         if (row.Disposition == NaturalSourceDisposition.Placed)
@@ -240,7 +241,7 @@ public sealed class NaturalBranchLifecycle : IDisposable
             var anchor = FindAnchor(row);
             if (anchor is null)
             {
-                if (!FootprintClear(row.BranchBounds)) { Quarantine(row, "partial placement without anchor"); return; }
+                if (!FootprintClear(bounds)) { Quarantine(row, "partial placement without anchor"); return; }
                 if (schematic!.Place(row) <= 0) { Quarantine(row, "schematic placed no blocks"); return; }
                 anchor = FindAnchor(row);
                 if (anchor is null) { Quarantine(row, "schematic anchor missing"); return; }
@@ -264,7 +265,6 @@ public sealed class NaturalBranchLifecycle : IDisposable
             if (matching.Length > 1) { Quarantine(row, "duplicate natural claims"); return; }
             if (matching.Length == 0)
             {
-                var bounds = row.BranchBounds;
                 var claim = new LandClaim
                 {
                     Areas = [new Cuboidi(bounds.MinX, bounds.MinY, bounds.MinZ,
