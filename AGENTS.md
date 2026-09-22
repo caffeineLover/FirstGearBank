@@ -1,17 +1,21 @@
 # Working instructions
 
-Read `First Gear Bank/docs/prompts/COMMON_STANDARDS.md`, `CSHARP_STANDARDS.md`, and
-`PROJECT_HYGIENE.md` for source conventions.
+## Read 
+    - `First Gear Bank/docs/prompts/COMMON_STANDARDS.md`
+    - `First Gear Bank/docs/prompts/CHARP_STANDARDS.md`
+    - `First Gear Bank/docs/prompts/VINTAGE_STORY_STANDARDS.md`
+    - `First Gear Bank/docs/prompts/PROJECT_HYGIENE.md`
 
-The user explicitly requires no test suite.  Do not create test projects, test dependencies, or a TDD workflow.
-Use a Release build and focused source review for verification.  Keep implementation and documentation economical.
-The banking core belongs in `First Gear Bank/src/core` and must have no Vintage Story dependency.
-The v03 specification defines behavior; the user's latest instructions override older delivery-plan process requirements.
-The user approved exact liquidity scans at month/funding checkpoints; do not restore the old no-scan startup gate.
 
-Use descriptive responsibility-based filenames.  Every core type needs a substantive comment, including records and
-interfaces.  File overviews must explain purpose, collaborators, units, state ownership, and relevant limitations;
-method comments must explain intent and invariants rather than merely repeat their names.
+## Project scope
+This is a hobby Vintage Story mod, not commercial or safety-critical software.
+    - Prefer simple, readable solutions for realistic gameplay.
+    - Do not add enterprise-style architecture, exhaustive edge-case handling, crash-recovery machinery
+    - Do not make automated test suites, test projects, test dependencies, or a TDD workflow.
+    - Keep changes focused. Fix the requested problem and stop.
+    - Manual verification should cover normal gameplay and a few realistic failures, not contrived or unlikely scenarios.
+    - When in doubt, optimize for the user's time and token budget.
 
-Never use XML summary opening or closing tags in source comments; retain the descriptive prose without wrappers.
-Leave exactly one blank line between internal sealed record declarations, before the next record's attached comment.
+## Architecture
+    - The banking core belongs in `First Gear Bank/src/core` and must have no Vintage Story dependency.
+    - The v03 specification defines behavior; the user's latest instructions override older delivery-plan process requirements.
