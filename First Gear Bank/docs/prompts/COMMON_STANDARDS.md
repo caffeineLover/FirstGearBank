@@ -1,4 +1,5 @@
 # Common Coding Standards
+Standards version: 1.0.0
 
 ## Code Quality
 - Prefer simple, readable code over unnecessary abstraction.
