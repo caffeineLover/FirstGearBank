@@ -14,6 +14,7 @@ using System;
 using System.Globalization;
 using System.Linq;
 using FirstGearBank.Core;
+using FirstGearBank.Server;
 using Vintagestory.API.Config;
 using Vintagestory.API.Common;
 
@@ -187,7 +188,7 @@ internal static class BankingDisplay
     {
         return data.Heading + "\n" + data.BankName + "\n\n" + Text("holder", Safe(data.HolderName)) + "\n" +
             Text("statement-balances", Exact(data.RustyUnits), Exact(data.TemporalUnits)) + "\n" +
-            Text("statement-rows", data.History.Length);
+            Text("statement-rows", data.History.Length.ToString());
     }
 
 

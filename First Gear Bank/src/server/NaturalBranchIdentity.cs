@@ -9,6 +9,7 @@ using System.Buffers.Binary;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Globalization;
 
 namespace FirstGearBank.Server;
 
@@ -31,7 +32,7 @@ internal static class NaturalBranchIdentity
     ////
     internal static double Roll(long seed, string sourceId)
     {
-        var bytes = Hash("selection", seed.ToString(System.Globalization.CultureInfo.InvariantCulture), sourceId);
+        var bytes = Hash("selection", seed.ToString(CultureInfo.InvariantCulture), sourceId);
         return (BinaryPrimitives.ReadUInt64BigEndian(bytes) >> 11) / 9007199254740992.0;
     }
 
@@ -51,10 +52,10 @@ internal static class NaturalBranchIdentity
     internal static ulong Candidate(long seed, string sourceId, int x, int z, int rotation)
     {
         return BinaryPrimitives.ReadUInt64BigEndian(Hash("candidate",
-            seed.ToString(System.Globalization.CultureInfo.InvariantCulture), sourceId,
-            x.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            z.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            rotation.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            seed.ToString(CultureInfo.InvariantCulture), sourceId,
+            x.ToString(CultureInfo.InvariantCulture),
+            z.ToString(CultureInfo.InvariantCulture),
+            rotation.ToString(CultureInfo.InvariantCulture)));
     }
 
 
@@ -70,14 +71,16 @@ internal static class NaturalBranchIdentity
 
 
 
-    //// Canonicalizes all inclusive bounds and dimension fields without culture-sensitive formatting.
+    //// Canonicalizes all-inclusive bounds and dimension fields without culture-sensitive formatting.
     ////
+
+
     private static string Bounds(BranchBounds bounds)
     {
-        return FormattableString.Invariant($"{bounds.Dimension},{bounds.MinX},{bounds.MinY},{bounds.MinZ}," +
-            $"{bounds.MaxX},{bounds.MaxY},{bounds.MaxZ}");
+	    return string.Create(
+		    CultureInfo.InvariantCulture,
+		    $"{bounds.Dimension}, {bounds.MinX}, {bounds.MinY}, {bounds.MinZ}, {bounds.MaxX}, {bounds.MaxY}," + $"{bounds.MaxZ}");
     }
-
-
+    
 
 }
