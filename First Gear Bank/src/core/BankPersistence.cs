@@ -6,13 +6,12 @@
  * Checksums detect changed bytes; they are not proof of authenticity against someone able to replace a world save.
  *
  * Restore validates framing and indispensable financial/control state before replaying monetary projections from
- * the journal.  Saved cash checkpoints are accepted only after consistency checks.  Registry damage can quarantine
- * name services while healthy personal finance remains loadable, and the original registry payload is retained for
- * subsequent export/save.  Unreadable financial authority returns a failed load with the original envelope bytes.
+ * the journal.  Saved cash checkpoints are accepted only after consistency checks.  Unreadable authority returns a
+ * failed load for the server adapter to handle.
  *
  * Pre-restart conversations and their tokens are intentionally inactive after reload.  Runtime clocks are reanchored,
- * cooldown durations are rebased to the new process, and unfinished physical settlements become quarantined.
- * The host still owns current-player observation, inventory reconciliation, and processing of newly due events.
+ * cooldown durations are rebased to the new process.  The host still owns current-player observation, inventory
+ * changes, and processing of newly due events.
  *
  * This implementation reads schema version one only; future versions need explicit migration handling before use.
  * Serialization success updates an in-memory marker, not a disk-durability guarantee.  The game adapter must stage the
@@ -26,9 +25,8 @@ using System.Text.Json;
 
 namespace FirstGearBank.Core;
 
-/// Startup outcome carrying either a usable coordinator or a financial-load failure, plus the original envelope bytes.
-/// RecipientServiceUnavailable can accompany a non-null bank with isolated name quarantine; CorruptState has no bank.
-/// PreservedBytes is privileged recovery evidence and must not be discarded or exposed in ordinary player responses.
+/// Startup outcome carrying either a usable coordinator or a load failure, plus the original envelope bytes.
+/// The server adapter decides how to handle a failed load without exposing save data to players.
 public sealed record BankLoadResult(BankingCoordinator? Bank, BankError Error, ImmutableArray<byte> PreservedBytes);
 
 /// Version-one financial section retaining world/revision identity, clock anchors, realized rates, and liquidity state.
@@ -41,26 +39,24 @@ internal sealed record FinancialSection(string WorldId, long Revision, Financial
 /// Its reverse lookup index is rebuilt after validation without importing historical or other-world player membership.
 internal sealed record RegistrySection(Guid Epoch, long Revision, ImmutableDictionary<string, NameEntry> Names);
 
-/// Persisted request, notification, inventory, and checkpoint facts that cannot all be derived from balance postings.
+/// Persisted request, notification, and checkpoint facts that cannot all be derived from balance postings.
 /// Scopes and tokens are retained in the save representation but not reactivated after restart.
 /// Cooldowns use remaining durations so a new process never interprets old absolute monotonic timestamps.
 internal sealed record ControlSection(ImmutableDictionary<string, ImmutableQueue<CachedResponse>> Responses,
     ImmutableDictionary<Guid, Notice> Notices, ImmutableDictionary<string, long> Watermarks,
-    ImmutableDictionary<Guid, Settlement> Settlements, ImmutableDictionary<string, FinancialInstant> Checkpoints,
+    ImmutableDictionary<string, FinancialInstant> Checkpoints,
     ImmutableDictionary<Guid, ScopeState> Scopes, ImmutableDictionary<Guid, CdQuote> Quotes,
     ImmutableDictionary<Guid, TransferConfirmation> Confirmations,
-    ImmutableDictionary<string, decimal> CooldownRemaining,
-    ImmutableList<RecoveryAuditRecord>? RecoveryAudit = null);
+    ImmutableDictionary<string, decimal> CooldownRemaining);
 
 /// Persistence portion of the world coordinator, sharing its gate and immutable published state.
-/// Framing, checksums, replay, and quarantine belong here; game save-file access belongs to the host adapter.
+/// Framing, checksums, and replay belong here; game save-file access belongs to the host adapter.
 public sealed partial class BankingCoordinator
 {
     private const int MaximumSectionBytes = 64 * 1024 * 1024;
     private const int MaximumEnvelopeBytes = 4 * MaximumSectionBytes + 4096;
     private static readonly byte[] Magic = "FGBSTATE"u8.ToArray();
     private static readonly JsonSerializerOptions JsonOptions = new() { MaxDepth = 64 };
-    private ImmutableArray<byte> quarantinedRegistry = [];
     private long serializedRevision = -1;
 
 
@@ -78,37 +74,33 @@ public sealed partial class BankingCoordinator
     //// Returns a complete version-one envelope for one captured immutable bank revision.
     ////
     //// The gate is held only while capturing state and updating the serialization marker.  JSON encoding and framing
-    //// occur outside it; a concurrent newer revision therefore remains dirty.  Quarantined registry bytes pass through
-    //// without reconstruction.  Serialization or size errors leave the marker unchanged and perform no host file
-    //// write.
+    //// occur outside it; a concurrent newer revision therefore remains dirty.  Serialization or size errors leave the
+    //// marker unchanged and perform no host file write.
     ////
     public byte[] Save()
     {
         BankState snapshot;
-        ImmutableArray<byte> rawRegistry;
         // Immutable collections keep this captured revision stable after releasing the publication gate.
-        lock (gate) { snapshot = state; rawRegistry = quarantinedRegistry; }
+        lock (gate) snapshot = state;
         var financial = new FinancialSection(snapshot.WorldId, snapshot.Revision, snapshot.Clock, snapshot.Market,
             snapshot.Liquidity, snapshot.PendingEconomics, snapshot.Options);
         var control = new ControlSection(snapshot.Responses, snapshot.Notices, snapshot.DeliveryWatermarks,
-            snapshot.Settlements, snapshot.Accounts.ToImmutableDictionary(p => p.Key, p => p.Value.Checkpoint),
+            snapshot.Accounts.ToImmutableDictionary(p => p.Key, p => p.Value.Checkpoint),
             snapshot.Scopes, snapshot.Quotes, snapshot.Confirmations,
-            snapshot.Cooldowns.ToImmutableDictionary(p => p.Key, p => Math.Max(0, p.Value - snapshot.Clock.RuntimeAnchor)),
-            snapshot.RecoveryAudit);
-        // The damaged registry payload must survive another save even when healthy sections continue changing.
+            snapshot.Cooldowns.ToImmutableDictionary(p => p.Key, p => Math.Max(0, p.Value - snapshot.Clock.RuntimeAnchor)));
         byte[][] sections = [JsonSerializer.SerializeToUtf8Bytes(snapshot.Journal, JsonOptions),
             JsonSerializer.SerializeToUtf8Bytes(financial, JsonOptions),
             JsonSerializer.SerializeToUtf8Bytes(control, JsonOptions),
-            rawRegistry.IsEmpty ? JsonSerializer.SerializeToUtf8Bytes(new RegistrySection(snapshot.RegistryEpoch,
-                snapshot.RegistryRevision, snapshot.Names), JsonOptions) : rawRegistry.ToArray()];
+            JsonSerializer.SerializeToUtf8Bytes(new RegistrySection(snapshot.RegistryEpoch, snapshot.RegistryRevision,
+                snapshot.Names), JsonOptions)];
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Encoding.UTF8, true);
         writer.Write(Magic);
         writer.Write(1);
         writer.Write(SHA256.HashData(Encoding.UTF8.GetBytes(snapshot.WorldId)));
-        writer.Write(snapshot.RegistryQuarantined);
+        writer.Write(false);
         writer.Write(sections.Length);
-        // Ordered section IDs and independent digests allow registry isolation without ignoring financial corruption.
+        // Ordered section IDs and independent digests reject malformed saved authority before it reaches the core.
         for (var i = 0; i < sections.Length; i++)
         {
             var bytes = sections[i];
@@ -127,15 +119,12 @@ public sealed partial class BankingCoordinator
 
 
 
-    //// Loads existing world-bound authority and returns its validation/quarantine outcome without overwriting input.
+    //// Loads existing world-bound authority and returns its validation outcome without overwriting input.
     ////
     //// Framing and checksums are checked before typed decoding.  Financial state is validated, monetary projections
     //// are rebuilt from the journal, and control references/checkpoints are reconciled before a coordinator is
     //// exposed.
-    //// Registry errors isolate name services when framing permits recovery of its payload.  Pre-restart scopes stay
-    //// closed and pending inventory operations remain quarantined; the host must complete its startup duties
-    //// afterward.
-    //// A failed financial load retains PreservedBytes and must never trigger an automatic fresh-bank fallback.
+    //// Pre-restart scopes stay closed.  A failed load retains PreservedBytes for the server adapter's startup handling.
     ////
     public static BankLoadResult Restore(ReadOnlySpan<byte> envelope, string worldId, IBankingHost host,
         IExactLiquidityIndex liquidityIndex)
@@ -149,7 +138,7 @@ public sealed partial class BankingCoordinator
             if (!reader.ReadBytes(8).AsSpan().SequenceEqual(Magic) || reader.ReadInt32() != 1 ||
                 !reader.ReadBytes(32).AsSpan().SequenceEqual(SHA256.HashData(Encoding.UTF8.GetBytes(worldId))))
                 throw new BankException(BankError.CorruptState);
-            var registryBad = reader.ReadBoolean();
+            _ = reader.ReadBoolean();
             if (reader.ReadInt32() != 4) throw new BankException(BankError.CorruptState);
             var sections = new byte[4][];
             for (var i = 0; i < 4; i++)
@@ -162,10 +151,7 @@ public sealed partial class BankingCoordinator
                     length > stream.Length - stream.Position) throw new BankException(BankError.CorruptState);
                 sections[i] = reader.ReadBytes(length);
                 if (!CryptographicOperations.FixedTimeEquals(digest, SHA256.HashData(sections[i])))
-                {
-                    if (i == 3) registryBad = true;
-                    else throw new BankException(BankError.CorruptState);
-                }
+                    throw new BankException(BankError.CorruptState);
             }
             if (stream.Position != stream.Length) throw new BankException(BankError.CorruptState);
             var journal = ReadSection<ImmutableList<JournalRecord>>(sections[0]);
@@ -186,38 +172,21 @@ public sealed partial class BankingCoordinator
                 Journal = journal,
                 Responses = control.Responses,
                 Notices = control.Notices,
-                DeliveryWatermarks = control.Watermarks,
-                Settlements = control.Settlements,
-                RecoveryAudit = control.RecoveryAudit ?? []
+                DeliveryWatermarks = control.Watermarks
             };
             snapshot = Ledger.Replay(snapshot);
             snapshot = RestoreCheckpoints(snapshot, control.Checkpoints);
             ValidateControl(snapshot);
-            // Every unfinished inventory operation remains unavailable until verified host reconciliation.
-            snapshot = snapshot with
-            {
-                Settlements = snapshot.Settlements.ToImmutableDictionary(p => p.Key,
-                p => p.Value.Phase == SettlementPhase.Finalized ? p.Value :
-                    p.Value with { Phase = SettlementPhase.Quarantined })
-            };
-            if (!registryBad)
-            {
-                try { snapshot = RestoreRegistry(snapshot, ReadSection<RegistrySection>(sections[3])); }
-                catch (Exception exception) when (exception is JsonException or BankException or ArgumentException)
-                { registryBad = true; }
-            }
+            snapshot = RestoreRegistry(snapshot, ReadSection<RegistrySection>(sections[3]));
             var sample = host.SampleClock();
             if (control.CooldownRemaining.Values.Any(v => v < 0)) throw new BankException(BankError.CorruptState);
             snapshot = snapshot with
             {
-                RegistryQuarantined = registryBad,
                 Clock = snapshot.Clock.Reanchor(sample),
                 Cooldowns = control.CooldownRemaining.ToImmutableDictionary(p => p.Key,
                     p => checked(sample.RuntimeSeconds + p.Value))
             };
-            var bank = new BankingCoordinator(snapshot, host, liquidityIndex);
-            if (registryBad) bank.quarantinedRegistry = ImmutableArray.Create(sections[3]);
-            return new(bank, registryBad ? BankError.RecipientServiceUnavailable : BankError.None, preserved);
+            return new(new BankingCoordinator(snapshot, host, liquidityIndex), BankError.None, preserved);
         }
         catch (Exception exception) when (exception is JsonException or BankException or IOException or
             ArgumentException or OverflowException or InvalidOperationException or NullReferenceException)
@@ -229,7 +198,7 @@ public sealed partial class BankingCoordinator
 
 
     //// Deserializes a version-one payload after Restore has accepted its section header and checksum.
-    //// Null or malformed data is rejected for the caller's quarantine path.  This helper performs no migration;
+    //// Null or malformed data is rejected for the caller's load-failure path.  This helper performs no migration;
     //// additional schemas require explicit version dispatch before reaching their corresponding decoder.
     ////
     private static T ReadSection<T>(byte[] bytes)
@@ -304,9 +273,8 @@ public sealed partial class BankingCoordinator
 
     //// Checks structural links between retained control state and the reconstructed financial journal.
     ////
-    //// Notices must reference existing recipients and journal sequence bounds; finalized settlement operations must
-    //// exist in history.  Cached responses must fit retention, identity, sequence, and revision constraints.
-    //// These checks do not infer client acknowledgment or prove physical inventory persistence from ledger facts.
+    //// Notices must reference existing recipients and journal sequence bounds.  Cached responses must fit retention,
+    //// identity, sequence, and revision constraints.
     ////
     private static void ValidateControl(BankState snapshot)
     {
@@ -315,46 +283,10 @@ public sealed partial class BankingCoordinator
                 notice.LastSequence > snapshot.Journal.Count || !Enum.IsDefined(notice.Kind) ||
                 !Enum.IsDefined(notice.Currency) || !snapshot.Accounts.ContainsKey(notice.Recipient))
                 throw new BankException(BankError.CorruptState);
-        var operationIds = snapshot.Journal.Select(r => r.OperationId).ToHashSet();
-        foreach (var (id, settlement) in snapshot.Settlements)
-            if (id != settlement.Id || id == Guid.Empty || !Enum.IsDefined(settlement.Phase) ||
-                settlement.Units <= 0 || settlement.Manifest.Deltas.IsDefaultOrEmpty ||
-                (settlement.Phase == SettlementPhase.Finalized && settlement.Operations.Any(o => !operationIds.Contains(o))) ||
-                (settlement.Resolution is { } resolution && (settlement.Phase != SettlementPhase.Finalized ||
-                    !Enum.IsDefined(resolution.Finding) || string.IsNullOrWhiteSpace(resolution.Administrator) ||
-                    string.IsNullOrWhiteSpace(resolution.Reason) || string.IsNullOrWhiteSpace(resolution.UtcTimestamp) ||
-                    Encoding.UTF8.GetByteCount(resolution.Reason) > 512 ||
-                    !DateTimeOffset.TryParse(resolution.UtcTimestamp, System.Globalization.CultureInfo.InvariantCulture,
-                        System.Globalization.DateTimeStyles.RoundtripKind, out _) ||
-                    resolution.Revision <= 0 || resolution.Revision > snapshot.Revision)))
-                throw new BankException(BankError.CorruptState);
-        foreach (var resolution in snapshot.Settlements.Values.Select(settlement => settlement.Resolution)
-                     .Where(resolution => resolution is not null))
-            ValidatePlayer(resolution!.Administrator);
         foreach (var (player, responses) in snapshot.Responses)
             if (responses.Count() > 1024 || responses.Any(r => r.Key.Player != player || r.Key.Sequence <= 0 ||
                 r.Result.Revision > snapshot.Revision || !Enum.IsDefined(r.Result.Error)))
                 throw new BankException(BankError.CorruptState);
-        if (snapshot.RecoveryAudit.Count > 4096) throw new BankException(BankError.CorruptState);
-        var auditIds = new HashSet<Guid>();
-        var lastAuditRevision = -1L;
-        foreach (var audit in snapshot.RecoveryAudit)
-        {
-            ValidatePlayer(audit.Administrator);
-            if (audit.Id == Guid.Empty || !auditIds.Add(audit.Id) || !Enum.IsDefined(audit.Action) ||
-                string.IsNullOrWhiteSpace(audit.Reason) || string.IsNullOrWhiteSpace(audit.UtcTimestamp) ||
-                Encoding.UTF8.GetByteCount(audit.Reason) > 512 ||
-                !DateTimeOffset.TryParse(audit.UtcTimestamp, System.Globalization.CultureInfo.InvariantCulture,
-                    System.Globalization.DateTimeStyles.RoundtripKind, out _) ||
-                audit.PriorRevision < 0 || audit.ResultingRevision <= audit.PriorRevision ||
-                audit.ResultingRevision <= lastAuditRevision || audit.ResultingRevision > snapshot.Revision ||
-                audit.Target is null ||
-                (audit.Action == RecoveryAction.SettlementResolution &&
-                    (audit.Finding is null || !Enum.IsDefined(audit.Finding.Value))) ||
-                (audit.Action != RecoveryAction.SettlementResolution && audit.Finding is not null))
-                throw new BankException(BankError.CorruptState);
-            lastAuditRevision = audit.ResultingRevision;
-        }
     }
 
 

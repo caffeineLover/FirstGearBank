@@ -43,7 +43,6 @@ public sealed partial class BankingCoordinator
     {
         lock (gate)
         {
-            RequireFinance();
             RequireSession(player, scope);
             var market = state.Market.Current;
             var settings = market.Settings;
@@ -114,7 +113,6 @@ public sealed partial class BankingCoordinator
     {
         lock (gate)
         {
-            RequireFinance();
             RequireSession(player, scope);
             ValidatePage(offset, limit);
             var sample = host.SampleClock();

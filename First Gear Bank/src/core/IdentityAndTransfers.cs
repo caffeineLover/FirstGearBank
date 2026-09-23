@@ -16,7 +16,7 @@
  * Successful transfers/corrections add notification intent to the same financial candidate.  Online recipients get
  * individual content; offline events can join unsealed summaries.  Login seals content under a stable notice ID,
  * and acknowledgment removes the retained intent.  Network delivery and client display deduplication belong to the
- * adapter; notification failure cannot reverse money.  Registry quarantine blocks name services independently of cash.
+ * adapter; notification failure cannot reverse money.
  */
 
 using System.Collections.Immutable;
@@ -283,7 +283,7 @@ public sealed partial class BankingCoordinator
 
     //// Resolves trimmed input through the current-name index and returns its one internal recipient identity.
     //// Empty/unknown matches and collisions have distinct safe errors.  Historical aliases and other-world players
-    //// are absent from this index, and registry quarantine takes precedence over all name resolution.
+    //// are absent from this index and name resolution rejects ambiguous matches.
     ////
     private static string Resolve(BankState candidate, string name)
     {
@@ -296,13 +296,12 @@ public sealed partial class BankingCoordinator
 
 
 
-    //// Enforces isolated recipient-service quarantine before observation, lookup, transfer, or name-based correction.
+    //// Validates the current recipient registry before observation, lookup, transfer, or name-based correction.
     //// The finance gate is separate, allowing other authenticated personal-account operations when their state is
     //// sound.
     ////
     private static void RequireRegistry(BankState candidate)
     {
-        if (candidate.RegistryQuarantined) throw new BankException(BankError.RecipientServiceUnavailable);
     }
 
 

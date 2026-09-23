@@ -10,7 +10,7 @@
  * rechecks every participating slot before changing anything, then marks changed slots dirty for engine replication.
  * Rollback restores only slots this operation touched and refuses to overwrite an unexpected third-party mutation.
  * The gate serializes bank operations, not arbitrary mods: execution must remain synchronous on the game server thread.
- * Evidence supports live rollback and later quarantine review; it is not proof of atomic inventory/world disk saves.
+ * Evidence supports live rollback; it is not proof of atomic inventory/world disk saves.
  */
 
 using System;
@@ -335,7 +335,7 @@ internal sealed class InventorySettlement : IInventoryChange
 
 
     //// Restores touched slots only when they still match this operation's before or after evidence.
-    //// Unexpected callback-side changes reject rollback and let the coordinator quarantine the settlement.
+    //// Unexpected callback-side changes reject rollback and let the coordinator report an ordinary inventory error.
     ////
     public void Rollback()
     {
@@ -346,7 +346,7 @@ internal sealed class InventorySettlement : IInventoryChange
             var current = Serialize(entry.Slot.Itemstack);
             if (!ReferenceEquals(entry.Inventory[entry.Index], entry.Slot) ||
                 (current != Serialize(entry.Before) && current != Serialize(entry.After)))
-                throw new BankException(BankError.SettlementQuarantined);
+                throw new BankException(BankError.InventoryUnavailable);
         }
         foreach (var index in touched)
         {
@@ -356,7 +356,7 @@ internal sealed class InventorySettlement : IInventoryChange
         }
         foreach (var index in touched)
             if (Serialize(slots[index].Slot.Itemstack) != Serialize(slots[index].Before))
-                throw new BankException(BankError.SettlementQuarantined);
+                throw new BankException(BankError.InventoryUnavailable);
     }
 
 

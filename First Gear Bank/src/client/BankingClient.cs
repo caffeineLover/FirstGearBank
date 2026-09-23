@@ -280,7 +280,7 @@ public sealed class BankingClient : IDisposable
         {
             Status = BankingDisplay.Error(reply.Status);
             if (reply.Status is "InvalidSession" or "InvalidSequence" or "PayloadMismatch" or
-                "AlreadyProcessedResponseExpired" or "SettlementQuarantined" or "CorruptState" or "ServiceUnavailable")
+                "AlreadyProcessedResponseExpired" or "CorruptState" or "ServiceUnavailable")
             {
                 if (current.Request.Sequence > 0 && !terminal) Status += " " + BankingDisplay.Text("check-history");
                 ReleaseConversation();

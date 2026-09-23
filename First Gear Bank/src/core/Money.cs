@@ -134,7 +134,7 @@ public readonly record struct Money(long Units)
 
 }
 
-/// Stable domain status codes used by command results, validation failures, and startup quarantine outcomes.
+/// Stable domain status codes used by command results and validation failures.
 /// Codes distinguish recoverable business rejection from unavailable authority without embedding names, balances, or
 /// UIDs.
 public enum BankError
@@ -142,14 +142,14 @@ public enum BankError
     None, InvalidAmount, InvalidCurrency, InsufficientFunds, BalanceCap, ArithmeticFault, InvalidTime,
     NoAccount, UnknownRecipient, AmbiguousRecipient, RecipientServiceUnavailable, SelfTransfer,
     InvalidSession, InvalidSequence, PayloadMismatch, AlreadyProcessedResponseExpired, ExpiredConfirmation,
-    Cooldown, InvalidDenomination, InventoryUnavailable, SettlementQuarantined, PermissionDenied,
+    Cooldown, InvalidDenomination, InventoryUnavailable, PermissionDenied,
     InvalidConfiguration, CorruptState, LiquidityIndexUnavailable, PrintAllowanceUsed
 }
 
 /// Carries an identity-free banking failure through candidate construction to the coordinator's terminal-result
 /// boundary.
-/// The supplied code is also the exception message; callers retain recovery evidence separately from ordinary errors.
-/// Throwing this exception does not itself publish, roll back inventory, or change quarantine state.
+/// The supplied code is also the exception message; callers translate it into player-safe localized text.
+/// Throwing this exception does not itself publish money or alter inventory.
 public sealed class BankException(BankError error) : Exception(error.ToString())
 {
     public BankError Error { get; } = error;

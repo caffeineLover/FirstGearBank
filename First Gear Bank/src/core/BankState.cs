@@ -36,9 +36,6 @@ public enum TransactionType { Deposit, Withdrawal, Interest, Storage, Transfer, 
 /// Selects a normalized coordinator action.  Materialize catches up an existing account without moving physical items.
 /// Token-bearing actions resolve their authoritative amounts and recipients from stored server confirmations.
 public enum CommandKind { Deposit, Withdraw, Transfer, BuyCd, AdminCorrection, Materialize }
-/// Describes an inventory settlement's progress or quarantine status separately from its monetary journal records.
-/// Current recovery quarantines unfinished records; phase labels alone do not prove cross-blob save ordering.
-public enum SettlementPhase { Prepared, InventoryApplied, BankCommitted, Finalized, Quarantined }
 
 /// One signed ledger movement in bank units, with positive debits and negative credits.
 /// Player identifies a customer liability owner; CdId distinguishes a contract where the ledger category requires it.
@@ -95,45 +92,13 @@ public sealed record CachedResponse(RequestKey Key, string Digest, BankResult Re
 /// wire.
 public sealed record Notice(Guid Id, string Recipient, TransactionType Kind, Currency Currency,
     string? SenderName, decimal TotalUnits, long Count, long LastSequence, bool Sealed);
-/// Host-produced inventory fingerprints and exact slot mutations for a preflighted physical settlement.
-/// These facts support comparison and recovery investigation; this record itself is not an authenticated capsule.
+/// Host-produced inventory fingerprints and exact slot mutations for a preflighted physical change.
+/// The core uses these facts to reject incomplete or inconsistent inventory preparation before moving money.
 public sealed record InventoryManifest(string FingerprintBefore, string FingerprintAfter,
     ImmutableArray<InventoryDelta> Deltas);
 /// Before and after representations of one identified inventory slot under the host's serialization format.
-/// The core retains the strings as evidence; decoding item stacks and validating inventory identity belong to the host.
+/// Decoding item stacks and validating inventory identity belong to the host.
 public sealed record InventoryDelta(string InventoryId, int Slot, string BeforeSerialized, string AfterSerialized);
-/// Physical deposit/withdrawal evidence connecting an inventory manifest to a request and its proposed journal batch.
-/// PlannedRecords retains reconstruction inputs; Operations identifies the corresponding published records on success.
-/// Finalized records remain replay evidence, while unfinished restored records quarantine the affected player's access.
-public sealed record Settlement(Guid Id, RequestKey Request, CommandKind Direction, Currency Currency,
-    long Units, InventoryManifest Manifest, SettlementPhase Phase, ImmutableArray<Guid> Operations,
-    ImmutableArray<JournalRecord> PlannedRecords, SettlementResolution? Resolution = null);
-
-/// Administrator's explicit finding for whether the physical side of an ambiguous settlement reached saved inventory.
-public enum SettlementFinding { InventoryApplied, InventoryNotApplied }
-
-/// Durable categories for privileged recovery actions that do not rewrite prior financial history.
-public enum RecoveryAction { RegistryRestore, RegistryReset, SettlementResolution }
-
-/// Trusted server-supplied administrator attribution required before any recovery candidate can be published.
-public sealed record RecoveryContext(string Administrator, string Reason, string UtcTimestamp);
-
-/// Immutable settlement-resolution evidence retained with the original manifest and planned journal records.
-public sealed record SettlementResolution(SettlementFinding Finding, string Administrator, string Reason,
-    string UtcTimestamp, long Revision);
-
-/// Immutable world-level audit event for registry and inventory recovery administration.
-public sealed record RecoveryAuditRecord(Guid Id, RecoveryAction Action, string Administrator, string Reason,
-    string UtcTimestamp, Guid? Target, SettlementFinding? Finding, long PriorRevision, long ResultingRevision);
-
-/// Portable, independently validated current-epoch registry snapshot used only by privileged recovery commands.
-/// SourceSha256 covers the canonical registry section; ExportedUtc describes the evidence copy, not financial time.
-public sealed record RegistryRecoverySnapshot(int Version, string WorldId, Guid Epoch, long Revision,
-    ImmutableDictionary<string, NameEntry>? Names, string ExportedUtc, string? SourceSha256);
-
-/// Recovery export containing either a healthy structured snapshot or exact quarantined registry payload bytes.
-public sealed record RegistryRecoveryExport(string WorldId, RegistryRecoverySnapshot? Snapshot,
-    ImmutableArray<byte> QuarantinedBytes, string Sha256);
 /// Held CD liquidity-spread target and the observed adjustment at its last financial-time checkpoint.
 /// Between checkpoints the observation decays toward Target using this stored half-life, without quote-driven writes.
 public sealed record LiquidityState(FinancialInstant Checkpoint, double Observed, double Target, double HalfLifeMonths);
@@ -146,8 +111,7 @@ public sealed record CoreOptions(int RustyDisplayPrecision = 3, decimal Transfer
 /// Complete immutable in-memory state for one world, published exclusively by BankingCoordinator.
 /// Financial helpers return modified candidates; readers retain coherent snapshots while subsequent revisions are
 /// built.
-/// Journal replay rebuilds monetary caches, but names, delivery facts, and settlement evidence have independent
-/// authority.
+/// Journal replay rebuilds monetary caches, while names and delivery facts have independent authority.
 /// The entire object is privileged server data and must never be serialized directly as a player-facing response.
 public sealed record BankState
 {
@@ -160,11 +124,8 @@ public sealed record BankState
     public CoreOptions Options { get; init; } = new();
     // Pending economics activates at the next boundary; current quotes and issued contracts retain their snapshots.
     public EconomicSettings? PendingEconomics { get; init; }
-    // Registry and finance quarantine are separate so a broken name index need not disable healthy personal accounts.
     public Guid RegistryEpoch { get; init; } = Guid.NewGuid();
     public long RegistryRevision { get; init; }
-    public bool RegistryQuarantined { get; init; }
-    public bool FinanceQuarantined { get; init; }
     // Account/CD projections and the maturity priority index accompany the append-only source journal.
     public ImmutableDictionary<string, CashAccount> Accounts { get; init; } =
         ImmutableDictionary<string, CashAccount>.Empty;
@@ -186,11 +147,9 @@ public sealed record BankState
     public ImmutableDictionary<Guid, TransferConfirmation> Confirmations { get; init; } =
         ImmutableDictionary<Guid, TransferConfirmation>.Empty;
     public ImmutableDictionary<string, decimal> Cooldowns { get; init; } = ImmutableDictionary<string, decimal>.Empty;
-    // Acknowledgment and inventory progress are control facts that cannot be inferred from balance totals alone.
+    // Acknowledgment state cannot be inferred from balance totals alone.
     public ImmutableDictionary<Guid, Notice> Notices { get; init; } = ImmutableDictionary<Guid, Notice>.Empty;
     public ImmutableDictionary<string, long> DeliveryWatermarks { get; init; } = ImmutableDictionary<string, long>.Empty;
-    public ImmutableDictionary<Guid, Settlement> Settlements { get; init; } = ImmutableDictionary<Guid, Settlement>.Empty;
-    public ImmutableList<RecoveryAuditRecord> RecoveryAudit { get; init; } = [];
     // History stores journal sequence numbers; total keys combine currency with an operation or transfer direction.
     public ImmutableDictionary<string, ImmutableList<long>> History { get; init; } =
         ImmutableDictionary<string, ImmutableList<long>>.Empty;
@@ -233,8 +192,7 @@ public interface IBankingHost
 
 
     //// Supplies the trusted display name used when freezing journal and statement metadata.
-    //// The host must support the named participant and keep internal identity out of this result, including when
-    //// name-resolution services are quarantined but the player can still access their own account.
+    //// The host must support the named participant and keep internal identity out of this result.
     ////
     string PlayerName(string player);
 
@@ -283,7 +241,7 @@ public interface IInventoryChange : IDisposable
 
 
     //// Restores the captured inventory before-state when live application fails before financial publication.
-    //// A rollback failure leaves the settlement quarantined, preventing further banking until trusted reconciliation.
+    //// A rollback failure is reported as an ordinary inventory failure.
     ////
     void Rollback();
 

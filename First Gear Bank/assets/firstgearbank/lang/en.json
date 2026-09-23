@@ -121,7 +121,6 @@
   "bank-error-Cooldown": "Please wait briefly before making another transfer.",
   "bank-error-InvalidDenomination": "The exact amount cannot be represented in the accepted physical gear denominations.",
   "bank-error-InventoryUnavailable": "The required gears are unavailable, or your inventory cannot accept the complete withdrawal.",
-  "bank-error-SettlementQuarantined": "Banking is held for recovery review. Contact a server administrator; no repair has been guessed.",
   "bank-error-PermissionDenied": "This operation is not available under the server's settings or your permissions.",
   "bank-error-InvalidConfiguration": "The Bank's configuration is invalid. Contact a server administrator.",
   "bank-error-CorruptState": "The Bank's saved authority is unavailable. Contact a server administrator.",

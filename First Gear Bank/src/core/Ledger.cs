@@ -14,7 +14,7 @@
  *
  * Recipient observations, delivery acknowledgments, and physical inventory evidence have separate authority and are
  * not reconstructed from cash totals here.  This file performs no engine calls, persistence I/O, or automatic repair
- * of a corrupt monetary record; validation errors propagate to the coordinator or startup quarantine path.
+ * of a corrupt monetary record; validation errors propagate to the coordinator or startup handling.
  */
 
 using System.Collections.Immutable;

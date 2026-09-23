@@ -6,11 +6,11 @@
  *
  * This host implements IBankingHost using server identities, current privileges, the trusted clock, Banker sessions,
  * and retained inventory transactions.  Network requests are normalized here on the main thread and responses contain
- * only safe core views. Administrative corrections/recovery use authenticated privilege checks, while statement
+ * only safe core views. Administrative corrections use authenticated privilege checks, while statement
  * printing and withdrawal Max reuse the same personal-inventory serialization boundary as money settlement.
  *
  * Banker content registers validated loaded entities through RegisterBanker.  This adapter does not manufacture branch
- * topology, spawn NPCs, provide a client GUI, or guess hard-crash repairs. Those integration boundaries
+ * topology, spawn NPCs, or provide a client GUI.  Those integration boundaries
  * remain explicit.  Checkpoint scans preserve per-account rounding at an accepted account-count-dependent cost;
  * ordinary ticks and quotes reuse the core's held liquidity target unless financial events have become due.
  */
@@ -38,15 +38,12 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
     private readonly ICoreServerAPI api;
     private readonly ServerDiagnostics log;
     private readonly ServerConfiguration configuration;
-    private readonly RegistryRecoveryStorage recoveryStorage;
     private readonly VintageStoryClock clock;
     private readonly BankerSessions sessions;
     private readonly BankingProtocol protocol;
     private readonly IExactLiquidityIndex liquidityIndex;
     private readonly object inventoryGate = new();
     private readonly Dictionary<Guid, string> administrativeScopes = new();
-    private readonly HashSet<string> reconciledPlayers = new(StringComparer.Ordinal);
-    private readonly HashSet<string> quarantinedPlayers = new(StringComparer.Ordinal);
     private RequestKey? inventoryRequest;
     private ServerSettings settings;
     private WorldBankStorage? storage;
@@ -81,7 +78,6 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
         this.liquidityIndex = liquidityIndex ?? new ScanningLiquidityIndex();
         log = new(api);
         configuration = new(api.DataBasePath, log);
-        recoveryStorage = new(api.DataBasePath);
         settings = configuration.Load();
         clock = new(api);
         protocol = new(api, HandleRequest, log);
@@ -93,9 +89,9 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
         api.Event.ServerSuspend += Suspend;
         api.Event.ServerResume += Resume;
         tickListener = api.Event.RegisterGameTickListener(Tick, 1000);
-        api.ChatCommands.Create("bankadmin").WithDescription("Bank status, configuration, corrections, and recovery")
+        api.ChatCommands.Create("bankadmin").WithDescription("Bank status, configuration, and corrections")
             .RequiresPrivilege(Privilege.controlserver)
-            .WithArgs(api.ChatCommands.Parsers.OptionalAll("status | reload | correct | registry | settlement"))
+            .WithArgs(api.ChatCommands.Parsers.OptionalAll("status | reload | correct"))
             .HandleWith(AdminCommand);
     }
 
@@ -118,7 +114,7 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
 
     //// Loads authority only at RunGame, after 1.22.7 restores calendar state during GameReady.
     //// SaveGameLoaded is too early: anchoring there would count historical world time again on the first live tick.
-    //// The selected exact index serves both creation and restore.  Corrupt saved authority stays untouched.
+    //// The selected exact index serves both creation and restore.  A failed restore starts a fresh hobby-mod bank.
     ////
     private void LoadWorld()
     {
@@ -206,20 +202,7 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
         try
         {
             RequireThread();
-            if (!reconciledPlayers.Contains(player.PlayerUID))
-            {
-                if (!InventoryRecoveryReceipts.Matches(player, bank.Snapshot()))
-                {
-                    quarantinedPlayers.Add(player.PlayerUID);
-                    log.Write("CRIT", "recovery", "Player inventory and bank receipt evidence disagree; player banking quarantined.");
-                }
-                reconciledPlayers.Add(player.PlayerUID);
-            }
-            try { bank.ObservePlayer(player.PlayerUID, player.PlayerName); }
-            catch (BankException error) when (error.Error == BankError.RecipientServiceUnavailable)
-            {
-                // Registry quarantine must not disable unrelated savings, inventory reconciliation, or save staging.
-            }
+            bank.ObservePlayer(player.PlayerUID, player.PlayerName);
             SendNotices(player);
         }
         catch (Exception error)
@@ -230,13 +213,11 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
 
 
 
-    //// Retires the connection's conversation and admission bucket without deleting accounts or pending notices.
+    //// Retires the connection's conversation without deleting accounts or pending notices.
     ////
     private void DisconnectPlayer(IServerPlayer player)
     {
         protocol.Disconnect(player);
-        reconciledPlayers.Remove(player.PlayerUID);
-        quarantinedPlayers.Remove(player.PlayerUID);
         if (bank is not null) sessions.Close(player.PlayerUID, bank);
     }
 
@@ -296,8 +277,6 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
             }
             if (request.Action == "open")
             {
-                if (!reconciledPlayers.Contains(player.PlayerUID) || quarantinedPlayers.Contains(player.PlayerUID))
-                    throw new BankException(BankError.SettlementQuarantined);
                 scope = sessions.Open(player, request.BankerEntity, clock.RealSeconds, bank);
                 var snapshot = bank.Snapshot();
                 var scopeState = snapshot.Scopes[scope];
@@ -594,8 +573,7 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
     public bool IsSessionValid(string player, Guid scope)
     {
         RequireThread();
-        return !faulted && !clock.Suspended && reconciledPlayers.Contains(player) &&
-            !quarantinedPlayers.Contains(player) && ((administrativeScopes.TryGetValue(scope, out var owner) &&
+        return !faulted && !clock.Suspended && ((administrativeScopes.TryGetValue(scope, out var owner) &&
             owner == player && CanCorrectBalances(player)) || sessions.Valid(player, scope, clock.RealSeconds));
     }
 
@@ -637,19 +615,9 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
         RequireThread();
         if (api.World.PlayerByUid(player) is not IServerPlayer online || !IsAuthenticated(online))
             throw new BankException(BankError.InventoryUnavailable);
-        if (inventoryRequest is null || inventoryRequest.Player != player || quarantinedPlayers.Contains(player))
-            throw new BankException(BankError.SettlementQuarantined);
-        var change = InventorySettlement.Prepare(inventoryGate, online, api.World, currency, units, withdrawal);
-        try
-        {
-            return new ReceiptedInventoryChange(change, online, api.WorldManager.SaveGame.SavegameIdentifier,
-                inventoryRequest, currency, units, withdrawal);
-        }
-        catch
-        {
-            change.Dispose();
-            throw;
-        }
+        if (inventoryRequest is null || inventoryRequest.Player != player)
+            throw new BankException(BankError.InventoryUnavailable);
+        return InventorySettlement.Prepare(inventoryGate, online, api.World, currency, units, withdrawal);
     }
 
 
@@ -681,7 +649,7 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
 
 
 
-    //// Handles permission-gated status, YAML reload, corrections, registry recovery, and settlement findings.
+    //// Handles permission-gated status, YAML reload, and balance corrections.
     //// Console callers may inspect or reload; corrections require an authenticated player for the audit trail.
     ////
     private TextCommandResult AdminCommand(TextCommandCallingArgs args)
@@ -707,107 +675,13 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
                 return result.Error == BankError.None ? TextCommandResult.Success("Correction committed: " +
                     string.Join(", ", result.Operations)) : TextCommandResult.Error(result.Error.ToString());
             }
-            if (words.Length == 2 && words[0] == "registry" && words[1] == "export")
-            {
-                if (bank is null || faulted) throw new BankException(BankError.CorruptState);
-                var name = recoveryStorage.Export(bank.ExportRegistryRecovery());
-                return TextCommandResult.Success("Registry recovery evidence exported as " + name + ".");
-            }
-            if (words.Length >= 3 && words[0] == "registry" && words[1] == "reset" &&
-                args.Caller.Player is IServerPlayer resetAdministrator)
-                return ResetRegistry(resetAdministrator, string.Join(' ', words.Skip(2)));
-            if (words.Length >= 4 && words[0] == "registry" && words[1] == "restore" &&
-                args.Caller.Player is IServerPlayer restoreAdministrator)
-                return RestoreRegistry(restoreAdministrator, words[2], string.Join(' ', words.Skip(3)));
-            if (words.Length == 5 && words[0] == "settlement" && words[1] == "resolve" &&
-                args.Caller.Player is IServerPlayer settlementAdministrator && Guid.TryParse(words[2], out var id) &&
-                Enum.TryParse<SettlementFinding>(words[3], false, out var finding) && Enum.IsDefined(finding))
-                return ResolveSettlement(settlementAdministrator, id, finding, words[4]);
-            return TextCommandResult.Error("Use /bankadmin status; reload; correct name currency amount reason; " +
-                "registry export|restore filename reason|reset reason; or settlement resolve id finding reason.");
+            return TextCommandResult.Error("Use /bankadmin status; reload; or correct name currency amount reason.");
         }
         catch (BankException error) { return TextCommandResult.Error(error.Error.ToString()); }
         catch (Exception error) when (error is FormatException or OverflowException or ArgumentException)
         {
             return TextCommandResult.Error("Invalid correction or configuration.");
         }
-    }
-
-
-
-    //// Restores one separately reviewed same-world registry snapshot and observes only current authenticated players.
-    ////
-    private TextCommandResult RestoreRegistry(IServerPlayer administrator, string filename, string reason)
-    {
-        RequireRecoveryAdministrator(administrator, reason);
-        var snapshot = recoveryStorage.ReadSnapshot(filename);
-        var result = bank!.RestoreRegistryRecovery(snapshot, RecoveryContext(administrator, reason));
-        storage?.Stage(bank);
-        sessions.CloseAll(bank);
-        foreach (var player in api.World.AllOnlinePlayers.OfType<IServerPlayer>().Where(IsAuthenticated))
-            ObservePlayer(player);
-        log.Write("INFO", "registry-recovery", $"Registry restored at bank revision {result.Revision}.");
-        return TextCommandResult.Success($"Registry restored at bank revision {result.Revision}.");
-    }
-
-
-
-    //// Exports damaged bytes before installing a new empty epoch and observing only current authenticated players.
-    ////
-    private TextCommandResult ResetRegistry(IServerPlayer administrator, string reason)
-    {
-        RequireRecoveryAdministrator(administrator, reason);
-        var evidence = recoveryStorage.Export(bank!.ExportRegistryRecovery());
-        var result = bank.ResetRegistry(RecoveryContext(administrator, reason));
-        storage?.Stage(bank);
-        sessions.CloseAll(bank);
-        foreach (var player in api.World.AllOnlinePlayers.OfType<IServerPlayer>().Where(IsAuthenticated))
-            ObservePlayer(player);
-        log.Write("INFO", "registry-recovery", $"Registry reset at bank revision {result.Revision}.");
-        return TextCommandResult.Success($"Registry reset at bank revision {result.Revision}; evidence: {evidence}.");
-    }
-
-
-
-    //// Applies an explicit settlement finding and releases live player quarantine only when receipts then agree.
-    ////
-    private TextCommandResult ResolveSettlement(IServerPlayer administrator, Guid id, SettlementFinding finding,
-        string reason)
-    {
-        RequireRecoveryAdministrator(administrator, reason);
-        var before = bank!.Snapshot();
-        if (!before.Settlements.TryGetValue(id, out var settlement))
-            throw new BankException(BankError.SettlementQuarantined);
-        var result = bank.ResolveSettlement(id, finding, RecoveryContext(administrator, reason));
-        storage?.Stage(bank);
-        sessions.Close(settlement.Request.Player, bank);
-        if (api.World.PlayerByUid(settlement.Request.Player) is IServerPlayer player && IsAuthenticated(player) &&
-            InventoryRecoveryReceipts.Matches(player, bank.Snapshot()))
-            quarantinedPlayers.Remove(settlement.Request.Player);
-        log.Write("INFO", "settlement-recovery",
-            $"Settlement {id} resolved as {finding} at bank revision {result.Revision}.");
-        return TextCommandResult.Success($"Settlement {id} resolved as {finding}; revision {result.Revision}.");
-    }
-
-
-
-    //// Rechecks live controlserver authority and bounds the mandatory audit reason before entering the core.
-    ////
-    private void RequireRecoveryAdministrator(IServerPlayer administrator, string reason)
-    {
-        if (bank is null || faulted || !IsAuthenticated(administrator) ||
-            !CanCorrectBalances(administrator.PlayerUID)) throw new BankException(BankError.PermissionDenied);
-        if (string.IsNullOrWhiteSpace(reason) || Encoding.UTF8.GetByteCount(reason) > 512)
-            throw new BankException(BankError.InvalidAmount);
-    }
-
-
-
-    //// Freezes authenticated administrator identity, visible reason, and UTC attribution for core audit persistence.
-    ////
-    private static RecoveryContext RecoveryContext(IServerPlayer administrator, string reason)
-    {
-        return new(administrator.PlayerUID, reason.Trim(), DateTimeOffset.UtcNow.ToString("O"));
     }
 
 

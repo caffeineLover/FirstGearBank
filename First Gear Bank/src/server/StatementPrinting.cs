@@ -1,7 +1,7 @@
 /*
  * Freezes player-safe statement projections into immutable item data and performs the paper-for-statement inventory
  * exchange.  The formatter consumes only the core's public Statement view plus calendar display facts supplied by the
- * host; internal player identities, conversations, balances outside the view, and recovery authority never enter items.
+ * host; internal player identities, conversations, and balances outside the view never enter items.
  *
  * Printing holds the same host inventory gate used by monetary settlement.  Paper removal and statement insertion are
  * preflighted against cloned hotbar/backpack stacks, applied together, and rolled back together on a live failure.  This
@@ -163,7 +163,7 @@ internal sealed class StatementPrintTransaction : IDisposable
             var current = Serialize(entry.Slot.Itemstack);
             if (!ReferenceEquals(entry.Inventory[entry.Index], entry.Slot) ||
                 (current != Serialize(entry.Before) && current != Serialize(entry.After)))
-                throw new BankException(BankError.SettlementQuarantined);
+                throw new BankException(BankError.InventoryUnavailable);
         }
         foreach (var index in touched)
         {

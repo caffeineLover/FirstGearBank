@@ -1,12 +1,12 @@
 /*
  * Owns namespaced world-save staging for the banking core's versioned, checksummed authority envelope.
- * An independent installation marker distinguishes a genuinely absent first installation from missing established
- * authority.  Unreadable, foreign-world, or unsupported bytes remain untouched; startup never replaces them with an
- * empty bank.  A successful core restore may separately quarantine recipient services or unresolved item settlements.
+ * An independent installation marker distinguishes a genuinely absent first installation from an existing bank.
+ * If the saved bank data cannot be read, this hobby mod logs the problem and starts a fresh bank rather than locking
+ * everyone out.  Server administrators can restore any wanted gears through ordinary game administration.
  *
  * Every GameWorldSave event stages a fresh snapshot, even when the core reports no changes since serialization.
  * StoreData updates the game's pending save data; neither it nor serialization proves disk durability or atomicity
- * with player inventories.  The adapter therefore leaves ambiguous cross-save physical settlements quarantined.
+ * with player inventories.
  */
 
 using System;
@@ -17,8 +17,8 @@ using Vintagestory.API.Server;
 
 namespace FirstGearBank.Server;
 
-/// Guarded save adapter for one world's bank, with no recovery path that silently discards established authority.
-/// The game owns the save object and disk commit; this object owns only the decision to stage validated bank bytes.
+/// Save adapter for one world's bank.  The game owns the save object and disk commit; this object owns only the
+/// decision to stage the current bank bytes.
 internal sealed class WorldBankStorage
 {
     private const string StateKey = "firstgearbank:authority-v1";
@@ -41,42 +41,36 @@ internal sealed class WorldBankStorage
 
 
 
-    //// Restores existing authority or initializes only when both the bank and installation marker are absent.
-    //// A marker mismatch or failed restore disables writes and leaves all original game-save entries intact.
+    //// Restores existing authority or initializes a fresh bank when saved data is absent or unreadable.
+    //// A marker mismatch is treated like unreadable data so normal play remains available.
     ////
     public BankingCoordinator? Load(IBankingHost host, IExactLiquidityIndex index, ServerSettings settings)
     {
         var bytes = save.GetData(StateKey);
         var storedMarker = save.GetData(MarkerKey);
-        if (storedMarker is not null && !storedMarker.AsSpan().SequenceEqual(marker))
+        var markerMatches = storedMarker is null || storedMarker.AsSpan().SequenceEqual(marker);
+        if (bytes is null && markerMatches)
         {
-            log.Write("CRIT", "storage", "Installation marker is invalid or belongs to another world; banking is disabled.");
-            return null;
-        }
-        if (bytes is null)
-        {
-            if (storedMarker is not null)
-            {
-                log.Write("CRIT", "storage", "Established bank authority is missing; no replacement bank was created.");
-                return null;
-            }
             var created = BankingCoordinator.Create(save.SavegameIdentifier, save.Seed, host, index,
                 settings.Economics, settings.TimeBasis);
             writable = true;
             Stage(created);
-            log.Write("INFO", "storage", "Initialized a first-install bank and staged its installation marker.");
+            log.Write("INFO", "storage", "Initialized a bank and staged its installation marker.");
             return created;
         }
 
-        var restored = BankingCoordinator.Restore(bytes, save.SavegameIdentifier, host, index);
-        if (restored.Bank is null)
+        var restored = bytes is null || !markerMatches ? null :
+            BankingCoordinator.Restore(bytes, save.SavegameIdentifier, host, index);
+        if (restored?.Bank is null)
         {
-            log.Write("CRIT", "storage", "Existing bank could not be restored; original authority bytes are preserved.");
-            return null;
+            log.Write("WARN", "storage", "Existing bank data could not be restored; starting a fresh bank.");
+            var created = BankingCoordinator.Create(save.SavegameIdentifier, save.Seed, host, index,
+                settings.Economics, settings.TimeBasis);
+            writable = true;
+            Stage(created);
+            return created;
         }
         writable = true;
-        if (restored.Error != BankError.None)
-            log.Write("WARN", "storage", $"Restored bank with restricted services: {restored.Error}.");
         return restored.Bank;
     }
 

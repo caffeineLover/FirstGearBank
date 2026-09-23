@@ -9,10 +9,9 @@
  * Identical retries return cached terminal results.  Business failures discard unpublished financial changes but
  * still finalize the authenticated sequence, preventing later execution of the same failed intent.
  *
- * Deposits and withdrawals additionally retain a host inventory lock, publish preparation evidence, and apply the
- * preflighted item mutation before publishing financial success.  A live application failure requests rollback;
- * failed rollback leaves the settlement quarantined.  This sequence does not establish atomic disk persistence
- * across player inventory and world data, and save staging remains the game adapter's responsibility.
+ * Deposits and withdrawals additionally retain a host inventory lock and apply the preflighted item mutation before
+ * publishing financial success.  A live application failure requests rollback and reports an ordinary inventory error.
+ * This sequence does not establish atomic disk persistence across player inventory and world data.
  *
  * Other partial declarations implement identity/transfers, CDs/statements, and persistence under this same gate.
  * IBankingHost supplies authentication, permissions, clocks, and inventory operations; IExactLiquidityIndex supplies
@@ -106,7 +105,6 @@ public sealed partial class BankingCoordinator
     {
         lock (gate)
         {
-            RequireFinance();
             Publish(FinanceEngine.Advance(state, host.SampleClock(), liquidityIndex, Guid.NewGuid()));
         }
     }
@@ -124,7 +122,6 @@ public sealed partial class BankingCoordinator
     {
         lock (gate)
         {
-            RequireFinance();
             settings.Validate(state.Market.Current.Rate);
             if (options.RustyDisplayPrecision is < 0 or > 6 || options.TransferCooldownSeconds < 0 ||
                 options.PrintedRecentTransactions is < 0 or > 100)
@@ -210,12 +207,9 @@ public sealed partial class BankingCoordinator
             var error = BankError.None;
             try
             {
-                RequireFinance();
                 if (!host.IsSessionValid(key.Player, key.Scope)) throw new BankException(BankError.InvalidSession);
                 if (!Enum.IsDefined(command.Kind) || !Enum.IsDefined(command.Currency))
                     throw new BankException(BankError.InvalidCurrency);
-                if (state.Settlements.Values.Any(s => s.Request.Player == key.Player &&
-                        s.Phase != SettlementPhase.Finalized)) throw new BankException(BankError.SettlementQuarantined);
                 var sample = host.SampleClock();
                 var commandId = Guid.NewGuid();
                 candidate = FinanceEngine.Advance(state, sample, liquidityIndex, commandId);
@@ -235,22 +229,19 @@ public sealed partial class BankingCoordinator
             // An admitted failure still advances sequence state, but publishes none of the discarded candidate's money.
             if (error != BankError.None) operations = [];
             var inventory = error == BankError.None && command.Kind is CommandKind.Deposit or CommandKind.Withdraw;
-            var revision = checked(state.Revision + (inventory ? 2 : 1));
+            var revision = checked(state.Revision + 1);
             candidate = FinalizeRequest(candidate, key, scope, digest, error, operations, revision);
-            // Item operations reserve a preparation revision in addition to the final revision already built above.
             if (inventory)
             {
-                try { candidate = ApplyInventory(before, candidate, key, command, operations); }
+                try { candidate = ApplyInventory(candidate, key, command); }
                 catch (Exception)
                 {
                     // Disposal failure after publication cannot turn committed money into a failed request.
                     var committed = state.Responses.GetValueOrDefault(key.Player, ImmutableQueue<CachedResponse>.Empty)
                         .FirstOrDefault(r => r.Key == key);
                     if (committed is not null) return committed.Result;
-                    var failure = state.Settlements.Values.Any(s => s.Request == key &&
-                        s.Phase == SettlementPhase.Quarantined) ? BankError.SettlementQuarantined :
-                        BankError.InventoryUnavailable;
-                    candidate = FinalizeRequest(state, key, scope, digest, failure, [], checked(state.Revision + 1));
+                    candidate = FinalizeRequest(state, key, scope, digest, BankError.InventoryUnavailable, [],
+                        checked(state.Revision + 1));
                 }
             }
             state = candidate;
@@ -323,13 +314,11 @@ public sealed partial class BankingCoordinator
 
     //// Couples a fully built financial candidate to the host's preflighted, locked inventory mutation.
     ////
-    //// The host independently verifies the item value and supplies exact before/after evidence.  A preparation
-    //// revision retains the old financial state plus that evidence, and the success state is allocated before Apply.
-    //// Application failure invokes rollback and records either a finalized failure or quarantine.  After successful
-    //// application, one state assignment publishes the prepared financial result before disposing the inventory lock.
+    //// The host independently verifies the item value and supplies exact before/after evidence.  The inventory change
+    //// is applied before the already-built financial result is published.  A failed application attempts rollback and
+    //// returns a normal inventory error rather than retaining a recovery state.
     ////
-    private BankState ApplyInventory(BankState before, BankState candidate, RequestKey key, BankCommand command,
-        ImmutableArray<Guid> operations)
+    private BankState ApplyInventory(BankState candidate, RequestKey key, BankCommand command)
     {
         IInventoryChange change;
         try
@@ -344,33 +333,14 @@ public sealed partial class BankingCoordinator
                 string.IsNullOrWhiteSpace(change.Manifest.FingerprintBefore) ||
                 string.IsNullOrWhiteSpace(change.Manifest.FingerprintAfter))
                 throw new BankException(BankError.InventoryUnavailable);
-            // Preserve the complete proposed journal inputs with the inventory manifest before applying any slots.
-            var settlement = new Settlement(Guid.NewGuid(), key, command.Kind, command.Currency, command.Units,
-                change.Manifest, SettlementPhase.Prepared, operations,
-                candidate.Journal.Skip(before.Journal.Count).ToImmutableArray());
-            Publish(before with { Settlements = before.Settlements.Add(settlement.Id, settlement) });
-            var completed = candidate with
-            {
-                Settlements = candidate.Settlements.Add(settlement.Id,
-                settlement with { Phase = SettlementPhase.Finalized })
-            };
             try { change.Apply(); }
             catch
             {
-                // A verified live rollback has no financial operations; a failed rollback requires explicit recovery.
-                var phase = SettlementPhase.Finalized;
                 try { change.Rollback(); }
-                catch { phase = SettlementPhase.Quarantined; }
-                state = state with
-                {
-                    Settlements = state.Settlements.SetItem(settlement.Id,
-                    settlement with { Phase = phase, Operations = [] })
-                };
-                throw new BankException(phase == SettlementPhase.Quarantined ?
-                    BankError.SettlementQuarantined : BankError.InventoryUnavailable);
+                catch { }
+                throw new BankException(BankError.InventoryUnavailable);
             }
-            state = completed;
-            return completed;
+            return candidate;
         }
     }
 
@@ -392,16 +362,6 @@ public sealed partial class BankingCoordinator
     private void Publish(BankState candidate)
     {
         state = candidate with { Revision = checked(state.Revision + 1) };
-    }
-
-
-
-    //// Enforces the finance quarantine gate before operations that need valid monetary authority.
-    //// It leaves state intact for export and does not treat a quarantined bank as an empty or newly created bank.
-    ////
-    private void RequireFinance()
-    {
-        if (state.FinanceQuarantined) throw new BankException(BankError.CorruptState);
     }
 
 
