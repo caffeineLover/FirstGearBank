@@ -1,7 +1,7 @@
 ﻿#!/usr/bin/env python3
 
 # Repository-level entry point for building, deploying, and packaging First Gear Bank.  Cake owns JSON validation,
-# compilation, staging, packaging, and deployment. This wrapper provides the public build interface and also supports
+# compilation, staging, packaging, and deployment.  This wrapper provides the public build interface and also supports
 # optional semantic version bumps and Git commits.
 #
 # Usage:
