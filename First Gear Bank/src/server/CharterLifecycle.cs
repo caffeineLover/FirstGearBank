@@ -5,7 +5,7 @@
  *
  * Protection is a deny layer after ordinary claims, not a synthetic claim.  Structural positions remain protected even
  * after environmental damage; only captured door, storage, seat, and light interactions remain usable.  Breaking the
- * Charter itself releases this layer and delegates an existing Banker's saved 17:00 departure to BankerLifecycle.
+ * Charter itself releases this layer and delegates an existing Banker's saved 18:00 departure to BankerLifecycle.
  *
  * Dirty work is spatially queued after nearby block changes, with bounded fallback rechecks.  Pending arrival progress
  * suspends when premises cease to match their immutable capture, resumes without reroll, and never force-loads terrain.
@@ -615,7 +615,7 @@ public sealed class CharterLifecycle : IDisposable
     private void Retire(CharterBranch branch, bool immediate, string reason)
     {
         var now = api.World.Calendar.TotalDays;
-        var departure = immediate ? now : Math.Max(now, Math.Floor(now) + 17.0 / 24.0);
+        var departure = immediate ? now : Math.Max(now, Math.Floor(now) + 18.0 / 24.0);
         branches[branch.Placement] = branch with
         {
             Disposition = CharterDisposition.Removed,

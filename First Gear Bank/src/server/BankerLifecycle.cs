@@ -12,7 +12,7 @@
  *
  * Spawning requires loaded, unobstructed standing cells.  The lifecycle never force-loads terrain or repairs blocks.
  * Home selection is deterministic and feeds the native return-home AI; normal idle behavior stays at that workstation.
- * DetachHome preserves an existing Banker's service until the saved 17:00 cutoff, but confers no continuing protection.
+ * DetachHome preserves an existing Banker's service until the saved 18:00 cutoff, but confers no continuing protection.
  * Charter authority gates only an initial Ready spawn and routes its NPC away from the manual removal shortcut.
  * Startup/save/disposal follow the engine lifecycle; staging remains distinct from atomic entity/world disk durability.
  */
@@ -156,14 +156,14 @@ public sealed class BankerLifecycle : IDisposable
 
 
 
-    //// Ends a Charter assignment without changing claims or finance, allowing only its existing NPC until 17:00.
+    //// Ends a Charter assignment without changing claims or finance, allowing only its existing NPC until 18:00.
     //// The caller releases Charter topology/spacing separately.  Pending unstaffed homes are cancelled immediately.
     ////
     public void DetachHome(Guid branch)
     {
         var now = api.World.Calendar.TotalDays;
         // Displayed hours always span 24 clock hours, even when the engine uses a different HoursPerDay.
-        var cutoff = Math.Max(now, Math.Floor(now) + 17.0 / 24.0);
+        var cutoff = Math.Max(now, Math.Floor(now) + 18.0 / 24.0);
         DetachHome(branch, cutoff);
     }
 

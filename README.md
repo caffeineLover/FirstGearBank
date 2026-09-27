@@ -89,7 +89,7 @@ the saved remaining wait and staffing gate; repair resumes the same wait without
 
 The original placer can sneak-right-click the Charter to remove and collect it; current build access is rechecked.
 Removal immediately releases topology and spacing.  An assigned Banker remains available only until the saved displayed
-17:00 cutoff; an unstaffed arrival is cancelled.  A replacement plaque creates a new branch and wait.
+18:00 cutoff; an unstaffed arrival is cancelled.  A replacement plaque creates a new branch and wait.
 Administrators with `controlserver` may stand inside one accepted branch and use `/bankbranch decommission reason` to
 release it immediately while leaving blocks and all finance unchanged. The same command handles natural branches and
 removes only the matching mod-owned claim and Banker home. Compatible furnishing blocks may opt in with
