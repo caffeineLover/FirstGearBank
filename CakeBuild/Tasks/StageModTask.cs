@@ -1,4 +1,4 @@
-﻿// Assembles the complete unpacked VS mod in a temporary staging directory. Both deployment and release packaging
+﻿// Assembles the complete unpacked VS mod in a temporary staging directory.  Both deployment and release packaging
 // consume this staged directory so that they operate on exactly the same set of files.
 
 
@@ -23,14 +23,13 @@ public sealed class StageModTask : FrostingTask<BuildContext>
 		context.EnsureDirectoryExists(modDirectory);
 		context.CleanDirectory(modDirectory);
 
-		// The VS project publishes the compiled assembly and any associated runtime files into this directory. These
+		// The VS project publishes the compiled assembly and any associated runtime files into this directory.  These
 		// files belong at the root of the finished mod.
 		context.CopyFiles(
 			$"../{BuildContext.ProjectName}/bin/{context.BuildConfiguration}/Mods/mod/publish/*",
 			modDirectory);
 
-		// Assets are optional from the build system's point of view, so mods without an assets directory can still use
-		// the same staging task.
+		// To the build system, assets are optional, so mods without an assets folder still use the same staging task.
 		if (context.DirectoryExists(
 			    $"../{BuildContext.ProjectName}/assets"))
 		{
