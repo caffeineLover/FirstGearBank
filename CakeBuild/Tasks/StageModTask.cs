@@ -1,6 +1,7 @@
-﻿// Assembles the complete unpacked Vintage Story mod in a temporary staging directory.
-// Both deployment and release packaging consume this staged directory so that they operate
-// on exactly the same set of files.
+﻿// Assembles the complete unpacked VS mod in a temporary staging directory. Both deployment and release packaging
+// consume this staged directory so that they operate on exactly the same set of files.
+
+
 
 using Cake.Common.IO;
 using Cake.Frosting;
@@ -43,8 +44,7 @@ public sealed class StageModTask : FrostingTask<BuildContext>
 			$"../{BuildContext.ProjectName}/modinfo.json",
 			$"{modDirectory}/modinfo.json");
 
-		// The mod icon is optional.  When present, preserve it at the mod root where VS and distribution tooling expect
-		// to find it.
+		// Preserve the optional mod icon at the mod root for Vintage Story and distribution tooling.
 		if (context.FileExists(
 			    $"../{BuildContext.ProjectName}/modicon.png"))
 		{
