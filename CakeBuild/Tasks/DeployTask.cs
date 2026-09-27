@@ -1,6 +1,5 @@
-﻿// As part of the build process, we want to recursively copy the built mod folder and all its contents into
-// an actual Vintage Story "Mods/" folder so we can test play this mod.  But before we do that, we must
-// delete the old mod.
+﻿// Deploys the staged mod to the local Vintage Story test installation.  The previously deployed copy is removed first
+// so deleted or renamed files cannot survive from an earlier build.
 
 using Cake.Common.Diagnostics;
 using Cake.Common.IO;
@@ -11,18 +10,20 @@ namespace CakeBuild.Tasks;
 
 
 [TaskName("Deploy")]
-[IsDependentOn(typeof(PackageModTask))]
+[IsDependentOn(typeof(StageModTask))]
 public sealed class DeployTask : FrostingTask<BuildContext>
 {
 	public override void Run(BuildContext context)
 	{
+		// Deployment consumes the same staged mod that release packaging uses, ensuring local testing matches the
+		// contents that will ultimately be distributed.
 		var source = context.Directory(
-			$"../Releases/{context.Name}");
+			$"./bin/staging/{context.Name}");
 
 		var destination = context.Directory(
 			$@"C:\Users\p\AppData\Roaming\StoryForge\installations\working_test_world\Mods\{context.Name}");
 
-		// Delete only the previously deployed copy of this mod.
+		// Remove only the previously deployed copy of this mod so stale files cannot remain after source changes.
 		context.EnsureDirectoryDoesNotExist(
 			destination,
 			new DeleteDirectorySettings
