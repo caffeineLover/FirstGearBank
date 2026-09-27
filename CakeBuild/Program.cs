@@ -16,7 +16,7 @@ public static class Program
 
 
 [TaskName("Default")]
-[IsDependentOn(typeof(DeployTask))]
+[IsDependentOn(typeof(BuildTask))]
 public class DefaultTask : FrostingTask
 {
 }
