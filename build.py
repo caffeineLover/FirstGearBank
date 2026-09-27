@@ -1,22 +1,17 @@
 ﻿#!/usr/bin/env python3
 
-# This repository-level entry point coordinates Cake builds, optional semantic version bumps, and optional Git commits
-# for First Gear Bank.  Cake owns JSON validation, the Release build, mod packaging, and deployment; without an explicit
-# target, its Default task replaces the deployed mod under StoryForge's working_test_world installation.  Arguments this
-# wrapper does not recognize pass through to Cake, including its Deploy and ZipModFolder targets.  When --commit is
-# used, the script stages the entire worktree only after Cake succeeds; --commit=auto asks an ephemeral, read-only Codex
-# process to describe that staged diff.  A failed subprocess stops the workflow, but the script does not undo completed
-# deployment or staging side effects.
+# Repository-level entry point for building, deploying, and packaging First Gear Bank.  Cake owns JSON validation,
+# compilation, staging, packaging, and deployment. This wrapper provides the public build interface and also supports
+# optional semantic version bumps and Git commits.
 #
 # Usage:
 #
 #   python build.py
-#   python build.py --bump=z
-#   python build.py --bump=y --commit=auto
-#   python build.py --bump=x --commit="My commit message"
-#   python build.py --target=Deploy
-#   python build.py --target=ZipModFolder
-#
+#   python build.py deploy
+#   python build.py package
+#   python build.py package --bump=z
+#   python build.py package --bump=y --commit=auto
+#   python build.py package --bump=x --commit="My commit message"
 
 import argparse
 import subprocess
@@ -25,23 +20,23 @@ from pathlib import Path
 
 root = Path(__file__).parent.resolve()
 
-parser = argparse.ArgumentParser(
-    description="Build and deploy First Gear Bank through the repository's Cake workflow.",
-    epilog="""Cake options not recognized by this wrapper pass through unchanged.
 
-Examples:
+parser = argparse.ArgumentParser(
+    description="Build, deploy, or package First Gear Bank.",
+    epilog="""Examples:
 
   python build.py
-  python build.py --bump=z
-  python build.py --bump=y --commit=auto
-  python build.py --bump=x --commit="My commit message"
-  python build.py --target=Deploy
-  python build.py --target=ZipModFolder
+  python build.py deploy
+  python build.py package
+  python build.py deploy --bump=z
+  python build.py package --bump=z
+  python build.py package --bump=z --commit=auto
 
-With no explicit target, Cake builds, packages, and deploys the mod to the StoryForge working test world.
+With no action specified, the mod is built but is neither deployed nor packaged.
 """,
     formatter_class=argparse.RawDescriptionHelpFormatter,
 )
+
 
 parser.add_argument(
     "action",
@@ -64,16 +59,24 @@ parser.add_argument(
 
 args, cake_args = parser.parse_known_args()
 
+if any(arg == "--target" or arg.startswith("--target=") for arg in cake_args):
+    parser.error("Use 'build', 'deploy', or 'package' instead of --target.")
+
+target = {
+    "build": "Build",
+    "deploy": "Deploy",
+    "package": "Package",
+}[args.action]
 
 
 
-# Cake receives the version bump in its native argument format and every unrecognized option verbatim.  This preserves
-# access to Cake targets without forcing this wrapper to duplicate Cake's build, packaging, or deployment policy.
+# Translate the public action to a Cake target; pass other unrecognized options through to Cake.
 
 command = [
     "dotnet", "run",
     "--project", "CakeBuild/CakeBuild.csproj",
-    "--"
+    "--",
+    f"--target={target}",
 ]
 
 if args.bump:
