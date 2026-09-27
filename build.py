@@ -42,12 +42,30 @@ With no explicit target, Cake builds, packages, and deploys the mod to the Story
 """,
     formatter_class=argparse.RawDescriptionHelpFormatter,
 )
-parser.add_argument("--bump", choices=["x", "y", "z"], help="bump one semantic-version component before building")
+
+parser.add_argument(
+    "action",
+    nargs="?",
+    choices=["build", "deploy", "package"],
+    default="build",
+    help="build the mod, deploy it for local testing, or create a release package",
+)
+
+parser.add_argument(
+    "--bump",
+    choices=["x", "y", "z"],
+    help="bump one semantic-version component before building",
+)
+
 parser.add_argument(
     "--commit",
     help="stage and commit the worktree after a successful build; use 'auto' for a Codex-written message",
 )
+
 args, cake_args = parser.parse_known_args()
+
+
+
 
 # Cake receives the version bump in its native argument format and every unrecognized option verbatim.  This preserves
 # access to Cake targets without forcing this wrapper to duplicate Cake's build, packaging, or deployment policy.
