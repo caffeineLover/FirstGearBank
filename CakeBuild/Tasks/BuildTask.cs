@@ -14,14 +14,14 @@ public sealed class BuildTask : FrostingTask<BuildContext>
 	public override void Run(BuildContext context)
 	{
 		context.DotNetClean(
-			$"../{BuildContext.ProjectName}/{BuildContext.ProjectName}.csproj",
+			$"../{context.ProjectName}/{context.ProjectName}.csproj",
 			new DotNetCleanSettings
 			{
 				Configuration = context.BuildConfiguration
 			});
 
 		context.DotNetPublish(
-			$"../{BuildContext.ProjectName}/{BuildContext.ProjectName}.csproj",
+			$"../{context.ProjectName}/{context.ProjectName}.csproj",
 			new DotNetPublishSettings
 			{
 				Configuration = context.BuildConfiguration

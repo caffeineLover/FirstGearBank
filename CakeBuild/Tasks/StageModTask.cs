@@ -26,29 +26,29 @@ public sealed class StageModTask : FrostingTask<BuildContext>
 		// The VS project publishes the compiled assembly and any associated runtime files into this directory.  These
 		// files belong at the root of the finished mod.
 		context.CopyFiles(
-			$"../{BuildContext.ProjectName}/bin/{context.BuildConfiguration}/Mods/mod/publish/*",
+			$"../{context.ProjectName}/bin/{context.BuildConfiguration}/Mods/mod/publish/*",
 			modDirectory);
 
 		// To the build system, assets are optional, so mods without an assets folder still use the same staging task.
 		if (context.DirectoryExists(
-			    $"../{BuildContext.ProjectName}/assets"))
+			    $"../{context.ProjectName}/assets"))
 		{
 			context.CopyDirectory(
-				$"../{BuildContext.ProjectName}/assets",
+				$"../{context.ProjectName}/assets",
 				$"{modDirectory}/assets");
 		}
 
 		// modinfo.json is required by Vintage Story to identify and load the mod.
 		context.CopyFile(
-			$"../{BuildContext.ProjectName}/modinfo.json",
+			$"../{context.ProjectName}/modinfo.json",
 			$"{modDirectory}/modinfo.json");
 
 		// Preserve the optional mod icon at the mod root for Vintage Story and distribution tooling.
 		if (context.FileExists(
-			    $"../{BuildContext.ProjectName}/modicon.png"))
+			    $"../{context.ProjectName}/modicon.png"))
 		{
 			context.CopyFile(
-				$"../{BuildContext.ProjectName}/modicon.png",
+				$"../{context.ProjectName}/modicon.png",
 				$"{modDirectory}/modicon.png");
 		}
 	}
