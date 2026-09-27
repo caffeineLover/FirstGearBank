@@ -67,7 +67,7 @@ internal sealed class BankingDialog : GuiDialog
 
 
     //// Recreates a bounded native panel from current display state, retaining typed values in dialog fields.
-    //// Buttons remain guarded while transport is outstanding; retry and close intentionally remain available.
+    //// Buttons remain guarded while transport is outstanding; closing always remains available.
     ////
     internal void Rebuild()
     {
@@ -109,7 +109,6 @@ internal sealed class BankingDialog : GuiDialog
                     () => client.Read(new("previewPrintStatement")), 160);
             }
         }
-        Button(composer, "retry", 475, 478, client.Retry, 104, true);
         Button(composer, "close", 585, 478, CloseWindow, 104, true);
         composer.EndChildElements().Compose();
         if (scrollVisibleHeight > 0)

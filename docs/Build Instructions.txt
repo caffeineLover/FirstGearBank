@@ -1,0 +1,21 @@
+Building Instructions
+  
+All building start with:
+  
+    python build.py
+
+Available options are:
+
+1. Increasing version number
+
+    --bump=(x|y|z)
+  
+2. Committing to git
+    The auto keyword gets Codex to write the commit message.  This is handled by build.py.
+
+    --commit="This is my commit message."
+    --commit=auto
+
+ 3. Deploying 
+      python build.py --target=Deploy
+      python build.py --target=ZipModFolder

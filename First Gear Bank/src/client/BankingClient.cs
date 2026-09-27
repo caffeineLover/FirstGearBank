@@ -5,9 +5,8 @@
  * Money in display DTOs is six-decimal integer bank units; UI deadlines use local monotonic milliseconds only.
  *
  * One outstanding request prevents overlapping confirmations and double-click submissions.  Read requests use negative
- * correlation numbers; financial commands use the server's positive conversation sequence.  An uncertain mutation
- * retains its original serialized packet for explicit retry, never a fresh financial request key.  Closing the dialog
- * does not cancel money already sent; its response is still handled before the server conversation is released.
+ * correlation numbers; financial commands use the server's positive conversation sequence.  Closing the dialog does
+ * not cancel money already sent; a later visit shows the server's current account state.
  *
  * A watched entity marker is merely an interaction hint set by trusted server registration.  The server independently
  * validates every Banker and session.  This file does not spawn NPCs, manage branches, or calculate Max locally.
@@ -87,7 +86,6 @@ public sealed class BankingClient : IDisposable
     internal string[] Names { get; private set; } = [];
     internal string Status { get; private set; } = BankingDisplay.Text("welcome");
     internal bool Busy => pending is not null;
-    internal bool CanRetry => pending is not null && Environment.TickCount64 - pending.SentAt >= 5000;
 
 
 
@@ -188,7 +186,7 @@ public sealed class BankingClient : IDisposable
 
 
     //// Serializes under the existing byte limit and retains ownership until an attributable reply arrives.
-    //// A synchronous transport failure is treated as uncertain delivery, especially for financial mutations.
+    //// A synchronous transport failure leaves the player free to close the ledger and try again later.
     ////
     private void Send(BankingRequest request)
     {
@@ -197,30 +195,8 @@ public sealed class BankingClient : IDisposable
         pending = new(request, bytes, Environment.TickCount64);
         Status = BankingDisplay.Text("waiting");
         try { channel.SendPacket(new BankingPacket { Data = bytes }); }
-        catch (Exception) { Status = BankingDisplay.Text("uncertain"); }
+        catch (Exception) { Status = BankingDisplay.Text("timeout"); }
         Refresh();
-    }
-
-
-
-    //// Retransmits financial bytes unchanged; read retries receive new correlation IDs to reject late old replies.
-    //// In particular, an open retry must not accept the scope from an earlier open that the server has superseded.
-    ////
-    internal void Retry()
-    {
-        if (!CanRetry || pending is not { } previous || !channel.Connected) return;
-        if (previous.Request.Sequence > 0)
-        {
-            pending = previous with { SentAt = Environment.TickCount64 };
-            try { channel.SendPacket(new BankingPacket { Data = previous.Bytes }); }
-            catch (Exception) { Status = BankingDisplay.Text("uncertain"); }
-            Refresh();
-        }
-        else
-        {
-            pending = null;
-            Read(previous.Request);
-        }
     }
 
 
@@ -329,8 +305,7 @@ public sealed class BankingClient : IDisposable
                     cash.Currency != request.Currency) throw new JsonException();
                 Confirmation = new(new(cash.Action, Amount: cash.Amount, Currency: cash.Currency),
                     BankingDisplay.Text("confirm-cash", BankingDisplay.Text(cash.Action),
-                        BankingDisplay.Exact(cash.ExactUnits), BankingDisplay.Text(cash.Currency)) + "\n\n" +
-                    BankingDisplay.Text("cash-recheck"), long.MaxValue);
+                        BankingDisplay.Exact(cash.ExactUnits), BankingDisplay.Text(cash.Currency)), long.MaxValue);
                 break;
             case "confirmTransfer":
                 var transfer = reply.Body.Deserialize<TransferBankingPreview>(JsonOptions) ?? throw new JsonException();
@@ -402,7 +377,7 @@ public sealed class BankingClient : IDisposable
 
 
     //// Updates expiry feedback and sends at most two notice acknowledgments per second, below admission limits.
-    //// A disappearing Banker closes idle UI; pending mutations remain visible as unresolved until a reply arrives.
+    //// A disappearing Banker closes idle UI; players may close an unanswered ledger and revisit the Banker later.
     ////
     private void Tick(float elapsedSeconds)
     {
@@ -421,11 +396,6 @@ public sealed class BankingClient : IDisposable
             {
                 // The durable server outbox will offer an unacknowledged notice again.
             }
-        }
-        if (CanRetry)
-        {
-            var timeout = BankingDisplay.Text(pending!.Request.Sequence > 0 ? "uncertain" : "timeout");
-            if (Status != timeout) { Status = timeout; Refresh(); }
         }
         if (Confirmation is { } confirmation && Environment.TickCount64 >= confirmation.Deadline)
         {
@@ -468,13 +438,14 @@ public sealed class BankingClient : IDisposable
 
 
     //// Treats window closure as loss of UI interest, never cancellation of a command that may already have committed.
-    //// Pending work keeps its original scope until a correlated reply or world exit resolves local ownership.
+    //// A later visit requests the current server state rather than retaining an unanswered local request.
     ////
     internal void Close()
     {
         closeRequested = true;
         Confirmation = null;
-        if (!Busy) ReleaseConversation();
+        pending = null;
+        ReleaseConversation();
     }
 
 
