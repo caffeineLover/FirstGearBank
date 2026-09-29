@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using Cake.Common;
@@ -6,6 +6,8 @@ using Cake.Core;
 using Cake.Frosting;
 using Cake.Json;
 using Vintagestory.API.Common;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace CakeBuild;
 
@@ -40,12 +42,32 @@ public class BuildContext : FrostingContext
 
         ProjectDirectory = FindProjectDirectory(repositoryRoot);
         ProjectName = Path.GetFileName(ProjectDirectory);
+        
+        var modInfoPath = Path.Combine(ProjectDirectory!, "modinfo.json");
 
         var modInfo = context.DeserializeJsonFromFile<ModInfo>(
-            Path.Combine(ProjectDirectory, "modinfo.json"));
+	        modInfoPath);
 
         Name = modInfo.ModID;
         Version = ApplyVersionBump(modInfo.Version, Bump);
+
+        if (!string.IsNullOrWhiteSpace(Bump))
+        {
+	        var json = JObject.Parse(File.ReadAllText(modInfoPath));
+
+	        json["version"] = Version;
+	        
+	        var jsonText = json.ToString(Formatting.Indented).Replace("\r\n", "\n");
+	        File.WriteAllText( modInfoPath, jsonText + "\n");
+
+
+	        Console.WriteLine();
+	        Console.WriteLine($"The new version is: {Version}");
+	        Console.WriteLine();
+        }
+  
+        if (!string.IsNullOrWhiteSpace(Bump))
+	        Console.WriteLine($"New version is: {Version}");
     }
 
     private static string FindProjectDirectory(string repositoryRoot)
@@ -94,3 +116,4 @@ public class BuildContext : FrostingContext
         };
     }
 }
+
