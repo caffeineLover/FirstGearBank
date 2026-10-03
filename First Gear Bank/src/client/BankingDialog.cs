@@ -98,7 +98,7 @@ internal sealed class BankingDialog : GuiDialog
             {
                 "history" => BankingDisplay.History(client.Display),
                 "totals" => BankingDisplay.Totals(client.Display, totalsOffset),
-                _ => BankingDisplay.Account(client.Display, client.Session?.DisplayPrecision ?? 3)
+                _ => BankingDisplay.Account(client.Display)
             };
             ScrollText(composer, text, 143, 280);
             if (page is "history" or "totals") PageButtons(composer, 437);

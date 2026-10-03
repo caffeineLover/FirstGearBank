@@ -74,7 +74,6 @@ public sealed class BankingClient : IDisposable
     private PendingBankingRequest? pending;
     private long readSequence;
     private long nextSequence = 1;
-    private long bankerEntity;
     private bool closeRequested;
     private bool disposed;
     private bool refreshQueued;
@@ -116,7 +115,6 @@ public sealed class BankingClient : IDisposable
         dialog.TryOpen();
         if (pending is not null) { Refresh(); return; }
         ReleaseConversation();
-        bankerEntity = entityId;
         dialog.Reset();
         Read(new("open", BankerEntity: entityId));
     }
@@ -377,7 +375,7 @@ public sealed class BankingClient : IDisposable
 
 
     //// Updates expiry feedback and sends at most two notice acknowledgments per second, below admission limits.
-    //// A disappearing Banker closes idle UI; players may close an unanswered ledger and revisit the Banker later.
+    //// The server owns Banker availability and notifies the client when a conversation actually closes.
     ////
     private void Tick(float elapsedSeconds)
     {
@@ -402,19 +400,6 @@ public sealed class BankingClient : IDisposable
             Confirmation = null;
             Status = BankingDisplay.Error("ExpiredConfirmation");
             Refresh();
-        }
-        if (Scope != Guid.Empty && !Busy)
-        {
-            var banker = api.World.GetEntityById(bankerEntity) as BankerEntity;
-            var player = api.World.Player?.Entity;
-            if (banker is null || !banker.Alive || !banker.WatchedAttributes.GetBool("firstgearbank:banker") ||
-                player is null || !player.Alive || player.Pos.Dimension != banker.Pos.Dimension ||
-                player.Pos.XYZ.SquareDistanceTo(banker.Pos.XYZ) > 36)
-            {
-                Status = BankingDisplay.Error("InvalidSession");
-                dialog.TryClose();
-                ReleaseConversation();
-            }
         }
     }
 

@@ -1,8 +1,8 @@
 /*
  * Formats player-safe server snapshots as localized ledger text for BankingDialog and bank notifications.
  * This presentation-only boundary borrows immutable core view types, not the coordinator or saved account records.
- * Amount inputs are never parsed here: exact bank units divide by 1,000,000 only for display.  Rounded cash labels
- * explicitly retain the underlying six-decimal balance; exact confirmations and contractual payoffs are not rounded.
+ * Amount inputs are never parsed here: exact bank units divide by 1,000,000 only for display.  Account balances are
+ * shown to three decimals; exact confirmations and contractual payoffs retain their full precision.
  *
  * Rates arrive as annual continuous or effective decimals and are labeled separately.  Contract timestamps remain
  * financial-month instants with their server-selected basis; remaining duration is informational, never a redemption
@@ -63,6 +63,15 @@ internal static class BankingDisplay
 
 
 
+    //// Shows account-screen rates to three decimal places without changing quote or contract formatting.
+    ////
+    private static string AccountPercent(double rate)
+    {
+        return (rate * 100).ToString("0.000", CultureInfo.InvariantCulture) + "%";
+    }
+
+
+
     //// Distinguishes known business failures while hiding unknown transport/server status strings behind safe wording.
     //// No arbitrary exception text, raw IDs, or unrecognized server content is interpolated into an error message.
     ////
@@ -75,19 +84,18 @@ internal static class BankingDisplay
 
 
 
-    //// Renders current cash, exact retained remainders, basis, and distinctly labeled floating-rate measures.
+    //// Renders three-decimal account balances, basis, and distinctly labeled floating-rate measures.
     //// Absence of a statement is not fabricated as an existing zero-balance account.
     ////
-    internal static string Account(BankingStatementPage? page, int precision)
+    internal static string Account(BankingStatementPage? page)
     {
         if (page is null) return Text("no-statement");
         var view = page.Statement;
         return Text("holder", Safe(view.HolderName)) + "\n\n" +
-            Text("balance", Text("Rusty"), new Money(view.RustyUnits).Display(precision), Exact(view.RustyUnits)) + "\n" +
-            Text("balance", Text("Temporal"), Exact(view.TemporalUnits), Exact(view.TemporalUnits)) + "\n\n" +
-            Text("rate-continuous", Percent(view.ContinuousRate)) + "\n" +
-            Text("rate-monthly", Percent(view.MonthlyEffectiveRate)) + "\n" +
-            Text("rate-annual", Percent(view.AnnualizedEffectiveYield)) + "\n\n" +
+            Text("balance", Text("Rusty-balance"), new Money(view.RustyUnits).Display(3)) + "\n" +
+            Text("balance", Text("Temporal-balance"), new Money(view.TemporalUnits).Display(3)) + "\n\n" +
+            Text("rate-continuous", AccountPercent(view.ContinuousRate)) + "\n" +
+            Text("rate-monthly", AccountPercent(view.MonthlyEffectiveRate)) + "\n\n" +
             Text("as-of", Text(view.TimeBasis.ToString()), view.AsOf.Months.ToString("0.######", CultureInfo.InvariantCulture)) +
             "\n" + CalendarDate(page, page.WorldCalendarDays) +
             "\n\n" + Text("rounding");
