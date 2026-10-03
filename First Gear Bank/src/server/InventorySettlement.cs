@@ -23,6 +23,7 @@ using System.Threading;
 using FirstGearBank.Core;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
+using Vintagestory.API.Datastructures;
 using Vintagestory.API.Server;
 
 namespace FirstGearBank.Server;
@@ -75,6 +76,7 @@ internal sealed class InventorySettlement : IInventoryChange
             var slots = Capture(player);
             if (withdrawal) PlanWithdrawal(slots, world, currency, units);
             else PlanDeposit(slots, currency, units);
+            SyncBagContents(slots);
             // Derive the amount from actual planned denomination differences, independently of the request.
             var delta = slots.Sum(slot => Value(slot.After, currency) - Value(slot.Before, currency));
             if (delta != (withdrawal ? units : -units)) throw new BankException(BankError.InventoryUnavailable);
@@ -149,6 +151,27 @@ internal sealed class InventorySettlement : IInventoryChange
             }
         }
         return slots;
+    }
+
+
+
+    //// Includes the bag item's automatic content update in the prepared after-state without replacing the live bag.
+    //// Vintage Story writes changed bag-content slots into their equipped bag when those slots are marked dirty.
+    ////
+    private static void SyncBagContents(List<PlannedSlot> slots)
+    {
+        foreach (var entry in slots)
+        {
+            if (entry.Slot is not ItemSlotBagContent content || Serialize(entry.Before) == Serialize(entry.After))
+                continue;
+            var bagIndex = slots.FindIndex(slot => ReferenceEquals(slot.Inventory, entry.Inventory) &&
+                slot.Index == content.BagIndex);
+            if (bagIndex < 0) throw new BankException(BankError.InventoryUnavailable);
+            var bag = slots[bagIndex].After;
+            var storedSlots = bag?.Attributes.GetTreeAttribute("backpack")?.GetTreeAttribute("slots");
+            if (storedSlots is null) throw new BankException(BankError.InventoryUnavailable);
+            storedSlots["slot-" + content.SlotIndex] = new ItemstackAttribute(entry.After?.Clone());
+        }
     }
 
 
@@ -323,6 +346,8 @@ internal sealed class InventorySettlement : IInventoryChange
         {
             var entry = slots[index];
             if (Serialize(entry.Before) == Serialize(entry.After)) continue;
+            // Bag-content notifications update the equipped bag item; assigning it here would reload its slots.
+            if (entry.Slot is ItemSlotBackpack) continue;
             touched.Add(index);
             entry.Slot.Itemstack = entry.After?.Clone();
             entry.Slot.MarkDirty();

@@ -16,6 +16,7 @@ using System.Text.Json;
 using FirstGearBank.Core;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
+using Vintagestory.API.Datastructures;
 using Vintagestory.API.Server;
 
 namespace FirstGearBank.Server;
@@ -82,6 +83,15 @@ internal sealed class StatementPrintTransaction : IDisposable
                 entry.Slot.CanHold(new DummySlot(output)) && entry.Slot.MaxSlotStackSize > 0);
             if (destination < 0) throw new BankException(BankError.InventoryUnavailable);
             slots[destination] = slots[destination] with { After = output };
+            if (slots[destination].Slot is ItemSlotBagContent content)
+            {
+                var bagIndex = slots.FindIndex(slot => ReferenceEquals(slot.Inventory, slots[destination].Inventory) &&
+                    slot.Index == content.BagIndex);
+                if (bagIndex < 0) throw new BankException(BankError.InventoryUnavailable);
+                var storedSlots = slots[bagIndex].After?.Attributes.GetTreeAttribute("backpack")?.GetTreeAttribute("slots");
+                if (storedSlots is null) throw new BankException(BankError.InventoryUnavailable);
+                storedSlots["slot-" + content.SlotIndex] = new ItemstackAttribute(output.Clone());
+            }
             return new(gate, slots);
         }
         catch
@@ -129,6 +139,8 @@ internal sealed class StatementPrintTransaction : IDisposable
         {
             var entry = slots[index];
             if (Serialize(entry.Before) == Serialize(entry.After)) continue;
+            // Marking a bag-content slot dirty updates its equipped bag item without reloading the content slots.
+            if (entry.Slot is ItemSlotBackpack) continue;
             touched.Add(index);
             entry.Slot.Itemstack = entry.After?.Clone();
             entry.Slot.MarkDirty();
