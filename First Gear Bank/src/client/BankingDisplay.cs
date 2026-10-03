@@ -190,7 +190,7 @@ internal static class BankingDisplay
 
 
 
-    //// Summarizes the immutable print payload before the player approves the paper-for-statement exchange.
+    //// Summarizes the immutable print payload before the player approves statement insertion.
     ////
     internal static string PrintedStatementSummary(PrintedStatementData data)
     {

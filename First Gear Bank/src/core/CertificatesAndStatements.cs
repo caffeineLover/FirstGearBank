@@ -15,8 +15,8 @@
  * between both stored endpoints, permitting a negative-yield value below principal without making it spendable.
  *
  * The host advances global time before requesting a quote and owns calendar-date rendering, UI, printed-item creation,
- * paper consumption, and the one-successful-print conversation allowance.  These methods provide financial/display
- * content, not physical statements or client authority over account identities, rates, or quoted payoffs.
+ * and inventory insertion.  These methods provide financial/display content, not physical statements or client
+ * authority over account identities, rates, or quoted payoffs.
  */
 
 using System.Collections.Immutable;
@@ -107,7 +107,7 @@ public sealed partial class BankingCoordinator
     //// One host sample drives due global events and the account's cash accrual.  That catch-up is published even
     //// though the requested operation is a view.  The response contains name-only history, cumulative totals, active
     //// contract projections, and clearly distinguished continuous/effective rates.  Pagination selects journal
-    //// records; physical printing, bearer item attributes, and paper/allowance validation are not performed here.
+    //// records; physical printing, bearer item attributes, and inventory-space validation are not performed here.
     ////
     public Statement GetStatement(string player, Guid scope, int offset = 0, int limit = 50)
     {

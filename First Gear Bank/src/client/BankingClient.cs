@@ -252,7 +252,8 @@ public sealed class BankingClient : IDisposable
         pending = null;
         if (reply.Status != "None")
         {
-            Status = BankingDisplay.Error(reply.Status);
+            Status = current.Request.Action == "printStatement" && reply.Status == "InventoryUnavailable"
+                ? BankingDisplay.Text("print-no-space") : BankingDisplay.Error(reply.Status);
             if (reply.Status is "InvalidSession" or "InvalidSequence" or "PayloadMismatch" or
                 "AlreadyProcessedResponseExpired" or "CorruptState" or "ServiceUnavailable")
             {

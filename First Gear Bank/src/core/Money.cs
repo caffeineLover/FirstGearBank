@@ -143,7 +143,7 @@ public enum BankError
     NoAccount, UnknownRecipient, AmbiguousRecipient, RecipientServiceUnavailable, SelfTransfer,
     InvalidSession, InvalidSequence, PayloadMismatch, AlreadyProcessedResponseExpired, ExpiredConfirmation,
     Cooldown, InvalidDenomination, InventoryUnavailable, PermissionDenied,
-    InvalidConfiguration, CorruptState, LiquidityIndexUnavailable, PrintAllowanceUsed
+    InvalidConfiguration, CorruptState, LiquidityIndexUnavailable
 }
 
 /// Carries an identity-free banking failure through candidate construction to the coordinator's terminal-result

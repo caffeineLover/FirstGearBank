@@ -1,10 +1,10 @@
 /*
- * Freezes player-safe statement projections into immutable item data and performs the paper-for-statement inventory
- * exchange.  The formatter consumes only the core's public Statement view plus calendar display facts supplied by the
+ * Freezes player-safe statement projections into immutable item data and inserts printed statements into inventory.
+ * The formatter consumes only the core's public Statement view plus calendar display facts supplied by the
  * host; internal player identities, conversations, and balances outside the view never enter items.
  *
- * Printing holds the same host inventory gate used by monetary settlement.  Paper removal and statement insertion are
- * preflighted against cloned hotbar/backpack stacks, applied together, and rolled back together on a live failure.  This
+ * Printing holds the same host inventory gate used by monetary settlement.  Statement insertion is preflighted
+ * against cloned hotbar/backpack stacks, then applied and rolled back on a live failure.  This
  * is an in-process atomicity guarantee, not a claim about ordering between separate engine save blobs.
  */
 
@@ -41,11 +41,11 @@ internal sealed record PrintedStatementData(int Version, string Heading, string 
 /// Session-owned preview token and frozen payload; completion makes retries observable without printing twice.
 internal sealed record StatementPrintState(Guid Token, PrintedStatementData Data, bool Completed);
 
-/// One captured inventory slot participating in the paper removal and statement insertion plan.
+/// One captured inventory slot participating in the statement insertion plan.
 internal sealed record StatementPrintSlot(IInventory Inventory, int Index, ItemSlot Slot, ItemStack? Before,
     ItemStack? After);
 
-/// Retained two-sided inventory plan used only for physical statement printing.
+/// Retained inventory plan used only for physical statement printing.
 internal sealed class StatementPrintTransaction : IDisposable
 {
     private readonly object gate;
@@ -65,7 +65,7 @@ internal sealed class StatementPrintTransaction : IDisposable
 
 
 
-    //// Removes exactly one vanilla paper item and inserts one nonstackable statement without changing live slots.
+    //// Plans insertion of one nonstackable statement into an empty personal slot without changing live slots.
     ////
     internal static StatementPrintTransaction Prepare(object gate, IServerPlayer player, IWorldAccessor world,
         PrintedStatementData data)
@@ -74,18 +74,6 @@ internal sealed class StatementPrintTransaction : IDisposable
         try
         {
             var slots = Capture(player);
-            var paperIndex = slots.FindIndex(entry => entry.After?.Collectible.Code.ToString() == "game:paper-parchment" &&
-                entry.Slot.CanTake());
-            if (paperIndex < 0)
-                paperIndex = slots.FindIndex(entry => entry.After?.Collectible.Code.Path.StartsWith("paper-",
-                    StringComparison.Ordinal) == true && entry.After.Collectible.Code.Domain == "game" &&
-                    entry.Slot.CanTake());
-            if (paperIndex < 0) throw new BankException(BankError.InventoryUnavailable);
-            var paper = slots[paperIndex];
-            var remaining = paper.After!.Clone();
-            remaining.StackSize--;
-            slots[paperIndex] = paper with { After = remaining.StackSize == 0 ? null : remaining };
-
             var item = world.GetItem(new AssetLocation("firstgearbank:bank-statement"));
             if (item is null) throw new BankException(BankError.InventoryUnavailable);
             var output = new ItemStack(item, 1);
@@ -128,7 +116,7 @@ internal sealed class StatementPrintTransaction : IDisposable
 
 
 
-    //// Rechecks the captured view before publishing both sides of the exchange.
+    //// Rechecks the captured view before inserting the statement.
     ////
     internal void Apply()
     {

@@ -88,14 +88,13 @@ internal sealed class BankerSessions
 
 
 
-    //// Replaces any uncommitted print preview with a fresh token while preserving a consumed conversation allowance.
+    //// Replaces the prior print preview with a fresh token, allowing another statement after a completed print.
     //// The host supplies already-frozen player-safe data after its ordinary account and session checks.
     ////
     public StatementPrintState PreparePrint(string player, Guid scope, PrintedStatementData data)
     {
         if (!conversations.TryGetValue(player, out var conversation) || conversation.Scope != scope)
             throw new BankException(BankError.InvalidSession);
-        if (conversation.Print?.Completed == true) throw new BankException(BankError.PrintAllowanceUsed);
         var prepared = new StatementPrintState(Guid.NewGuid(), data, false);
         conversations[player] = conversation with { Print = prepared };
         return prepared;
@@ -115,7 +114,7 @@ internal sealed class BankerSessions
 
 
 
-    //// Consumes the conversation allowance only after the complete paper/output inventory exchange succeeds.
+    //// Marks this preview complete after insertion so a repeated request cannot print a duplicate.
     ////
     public void CompletePrint(string player, Guid scope, Guid token)
     {

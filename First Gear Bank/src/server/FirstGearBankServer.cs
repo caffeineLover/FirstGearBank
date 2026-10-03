@@ -486,7 +486,7 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
 
 
 
-    //// Exchanges one paper for the previewed immutable statement and consumes the session allowance after Apply.
+    //// Inserts the previewed immutable statement into a free personal slot and marks its token complete after Apply.
     //// An identical retry after success returns success without repeating inventory work.
     ////
     private object PrintStatement(IServerPlayer player, BankingRequest request)
@@ -506,7 +506,7 @@ public sealed class FirstGearBankServer : IBankingHost, IDisposable
             catch
             {
                 log.Write("WARN", "statement-printing",
-                    "Statement inventory rollback could not prove restoration; the conversation allowance remains unused.");
+                    "Statement inventory rollback could not prove restoration; the print token remains unused.");
             }
             throw;
         }
